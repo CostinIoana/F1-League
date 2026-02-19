@@ -10,13 +10,19 @@ import { AdminNotificationsPage } from "./pages/admin/AdminNotificationsPage";
 
 function App() {
   const role: "admin" | "player" = "admin";
+  const seasons = ["F1 2026", "F1 2025", "F1 2024"];
 
   return (
     <Routes>
       <Route
         path="/"
         element={
-          <AppShell role={role} seasonName="F1 2025" userName="Costin" />
+          <AppShell
+            role={role}
+            seasonName="F1 2026"
+            seasons={seasons}
+            userName="Costin"
+          />
         }
       >
         <Route index element={<Navigate to="leaderboards" replace />} />
@@ -25,10 +31,14 @@ function App() {
         <Route path="my-team" element={<MyTeamPage />} />
         <Route path="races" element={<RacesPage />} />
 
-        <Route path="admin/season" element={<AdminSeasonPage />} />
-        <Route path="admin/users" element={<AdminUsersPage />} />
-        <Route path="admin/scoring" element={<AdminScoringPage />} />
-        <Route path="admin/notifications" element={<AdminNotificationsPage />} />
+        {role === "admin" && (
+          <>
+            <Route path="admin/season" element={<AdminSeasonPage />} />
+            <Route path="admin/users" element={<AdminUsersPage />} />
+            <Route path="admin/scoring" element={<AdminScoringPage />} />
+            <Route path="admin/notifications" element={<AdminNotificationsPage />} />
+          </>
+        )}
 
         <Route path="*" element={<div className="p-6">Not Found</div>} />
       </Route>
