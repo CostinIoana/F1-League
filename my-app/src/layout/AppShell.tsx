@@ -141,7 +141,7 @@ export function AppShell({
                 >
                   {seasons.map((season) => (
                     <option key={season.id} value={season.id}>
-                      {season.name}
+                      {season.name} {season.year}
                     </option>
                   ))}
                 </select>
