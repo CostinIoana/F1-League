@@ -4,6 +4,7 @@ import type { SessionData } from "./types";
 const SEASONS_STORAGE_KEY = "f1league.seasons";
 const DEFAULT_VALUE_GROUP_COUNT = 5;
 const DEFAULT_DRAFT_PILOT_COUNT = 9;
+const MAX_GROUP_LIMIT = 99;
 
 function createDefaultGroupLimits(draftPilotCount: number): Record<PilotValueGroup, number> {
   return {
@@ -192,23 +193,23 @@ function normalizeSeason(value: unknown): Season | null {
   const groupLimits: Record<PilotValueGroup, number> = {
     A:
       typeof candidate.draftConfig?.groupLimits?.A === "number"
-        ? Math.max(0, Math.min(draftPilotCount, Math.floor(candidate.draftConfig.groupLimits.A)))
+        ? Math.max(0, Math.min(MAX_GROUP_LIMIT, Math.floor(candidate.draftConfig.groupLimits.A)))
         : defaultGroupLimits.A,
     B:
       typeof candidate.draftConfig?.groupLimits?.B === "number"
-        ? Math.max(0, Math.min(draftPilotCount, Math.floor(candidate.draftConfig.groupLimits.B)))
+        ? Math.max(0, Math.min(MAX_GROUP_LIMIT, Math.floor(candidate.draftConfig.groupLimits.B)))
         : defaultGroupLimits.B,
     C:
       typeof candidate.draftConfig?.groupLimits?.C === "number"
-        ? Math.max(0, Math.min(draftPilotCount, Math.floor(candidate.draftConfig.groupLimits.C)))
+        ? Math.max(0, Math.min(MAX_GROUP_LIMIT, Math.floor(candidate.draftConfig.groupLimits.C)))
         : defaultGroupLimits.C,
     D:
       typeof candidate.draftConfig?.groupLimits?.D === "number"
-        ? Math.max(0, Math.min(draftPilotCount, Math.floor(candidate.draftConfig.groupLimits.D)))
+        ? Math.max(0, Math.min(MAX_GROUP_LIMIT, Math.floor(candidate.draftConfig.groupLimits.D)))
         : defaultGroupLimits.D,
     E:
       typeof candidate.draftConfig?.groupLimits?.E === "number"
-        ? Math.max(0, Math.min(draftPilotCount, Math.floor(candidate.draftConfig.groupLimits.E)))
+        ? Math.max(0, Math.min(MAX_GROUP_LIMIT, Math.floor(candidate.draftConfig.groupLimits.E)))
         : defaultGroupLimits.E,
   };
 

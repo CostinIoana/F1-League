@@ -26,6 +26,8 @@ const statusToneMap: Record<SeasonStatus, "neutral" | "primary" | "secondary"> =
   completed: "secondary",
 };
 
+const MAX_GROUP_LIMIT = 99;
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -255,12 +257,9 @@ export function AdminSeasonPage() {
     activeWizardSeason?.draftConfig.valueGroupCount ?? 1
   );
   const effectiveDraftPilotLimit = activeWizardSeason
-    ? Math.min(
-        activeWizardSeason.draftConfig.draftPilotCount,
-        availableValueGroups.reduce(
-          (total, group) => total + activeWizardSeason.draftConfig.groupLimits[group],
-          0
-        )
+    ? availableValueGroups.reduce(
+        (total, group) => total + activeWizardSeason.draftConfig.groupLimits[group],
+        0
       )
     : 0;
   const activationIssues = (() => {
@@ -842,14 +841,18 @@ export function AdminSeasonPage() {
       }
 
       const parsedLimit = Number(groupLimitDrafts[group]);
-      if (!Number.isInteger(parsedLimit) || parsedLimit < 0 || parsedLimit > nextDraftPilotCount) {
+      if (!Number.isInteger(parsedLimit) || parsedLimit < 0 || parsedLimit > MAX_GROUP_LIMIT) {
         setDraftConfigMessage(
-          `Group ${group} limit must be an integer between 0 and ${nextDraftPilotCount}.`
+          `Group ${group} limit must be an integer between 0 and ${MAX_GROUP_LIMIT}.`
         );
         return;
       }
       nextGroupLimits[group] = parsedLimit;
     }
+    const nextEffectiveDraftPilotLimit = PILOT_VALUE_GROUPS.slice(0, nextValueGroupCount).reduce(
+      (total, group) => total + nextGroupLimits[group],
+      0
+    );
 
     let movedToUnassignedCount = 0;
     let unselectedByGroupRulesCount = 0;
@@ -897,7 +900,7 @@ export function AdminSeasonPage() {
         if (!pilot.selectedForDraft) {
           return pilot;
         }
-        if (keptSelectedTotal >= nextDraftPilotCount) {
+        if (keptSelectedTotal >= nextEffectiveDraftPilotLimit) {
           unselectedByDraftLimitCount += 1;
           return { ...pilot, selectedForDraft: false };
         }
