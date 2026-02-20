@@ -254,6 +254,15 @@ export function AdminSeasonPage() {
     0,
     activeWizardSeason?.draftConfig.valueGroupCount ?? 1
   );
+  const effectiveDraftPilotLimit = activeWizardSeason
+    ? Math.min(
+        activeWizardSeason.draftConfig.draftPilotCount,
+        availableValueGroups.reduce(
+          (total, group) => total + activeWizardSeason.draftConfig.groupLimits[group],
+          0
+        )
+      )
+    : 0;
   const activationIssues = (() => {
     if (!activeWizardSeason) {
       return ["Season not found."];
@@ -277,9 +286,9 @@ export function AdminSeasonPage() {
     if (allPilots.some((pilot) => pilot.valueGroup === "unassigned")) {
       issues.push("Assign value groups for all pilots.");
     }
-    if (selectedPilots.length !== activeWizardSeason.draftConfig.draftPilotCount) {
+    if (selectedPilots.length !== effectiveDraftPilotLimit) {
       issues.push(
-        `Select exactly ${activeWizardSeason.draftConfig.draftPilotCount} pilots for draft.`
+        `Select exactly ${effectiveDraftPilotLimit} pilots for draft.`
       );
     }
 
@@ -352,6 +361,42 @@ export function AdminSeasonPage() {
     if (wizardIsLocked) {
       setPilotMessage("Locked: only draft seasons can be edited.");
       return;
+    }
+
+    const targetTeam = activeWizardSeason.teams.find((team) => team.id === teamId);
+    const targetPilot = targetTeam?.pilots.find((pilot) => pilot.id === pilotId);
+    if (!targetTeam || !targetPilot) {
+      setPilotMessage("Pilot not found.");
+      return;
+    }
+
+    if (valueGroup !== "unassigned" && !availableValueGroups.includes(valueGroup)) {
+      setPilotMessage("Selected value group is not allowed by season configuration.");
+      return;
+    }
+
+    if (targetPilot.selectedForDraft && valueGroup === "unassigned") {
+      setPilotMessage("Unselect pilot from draft before setting group to unassigned.");
+      return;
+    }
+
+    if (valueGroup !== "unassigned") {
+      const pilotsByGroup = activeWizardSeason.teams.reduce(
+        (counts, team) => {
+          team.pilots.forEach((pilot) => {
+            if (pilot.valueGroup !== "unassigned" && !(team.id === teamId && pilot.id === pilotId)) {
+              counts[pilot.valueGroup] += 1;
+            }
+          });
+          return counts;
+        },
+        { A: 0, B: 0, C: 0, D: 0, E: 0 } as Record<PilotValueGroup, number>
+      );
+
+      if (pilotsByGroup[valueGroup] >= activeWizardSeason.draftConfig.groupLimits[valueGroup]) {
+        setPilotMessage(`Group ${valueGroup} limit reached by current rules.`);
+        return;
+      }
     }
 
     const nextTeams = activeWizardSeason.teams.map((team) => {
@@ -635,6 +680,22 @@ export function AdminSeasonPage() {
       return;
     }
 
+    const pilotsByGroup = activeWizardSeason.teams.reduce(
+      (counts, team) => {
+        team.pilots.forEach((pilot) => {
+          if (pilot.valueGroup !== "unassigned") {
+            counts[pilot.valueGroup] += 1;
+          }
+        });
+        return counts;
+      },
+      { A: 0, B: 0, C: 0, D: 0, E: 0 } as Record<PilotValueGroup, number>
+    );
+    if (pilotsByGroup[pilotValueGroupDraft] >= activeWizardSeason.draftConfig.groupLimits[pilotValueGroupDraft]) {
+      setPilotMessage(`Group ${pilotValueGroupDraft} is full based on current rules.`);
+      return;
+    }
+
     const nextPilot = {
       id: createPilotId(trimmedName, new Set(selectedTeam.pilots.map((pilot) => pilot.id))),
       name: trimmedName,
@@ -684,7 +745,8 @@ export function AdminSeasonPage() {
     );
 
     let blockedByLimit = false;
-    let blockedByGroupLimit = false;
+    let blockedByUnassignedGroup = false;
+    let blockedByGroupLimit: PilotValueGroup | null = null;
     const nextTeams = activeWizardSeason.teams.map((team) => {
       if (team.id !== teamId) {
         return team;
@@ -697,13 +759,13 @@ export function AdminSeasonPage() {
           }
           if (
             !pilot.selectedForDraft &&
-            selectedCount >= activeWizardSeason.draftConfig.draftPilotCount
+            selectedCount >= effectiveDraftPilotLimit
           ) {
             blockedByLimit = true;
             return pilot;
           }
           if (!pilot.selectedForDraft && pilot.valueGroup === "unassigned") {
-            blockedByGroupLimit = true;
+            blockedByUnassignedGroup = true;
             return pilot;
           }
           if (
@@ -711,7 +773,7 @@ export function AdminSeasonPage() {
             pilot.valueGroup !== "unassigned" &&
             selectedByGroup[pilot.valueGroup] >= activeWizardSeason.draftConfig.groupLimits[pilot.valueGroup]
           ) {
-            blockedByGroupLimit = true;
+            blockedByGroupLimit = pilot.valueGroup;
             return pilot;
           }
           return { ...pilot, selectedForDraft: !pilot.selectedForDraft };
@@ -721,13 +783,20 @@ export function AdminSeasonPage() {
 
     if (blockedByLimit) {
       setPilotMessage(
-        `Maximum ${activeWizardSeason.draftConfig.draftPilotCount} selected pilots for draft.`
+        `Maximum ${effectiveDraftPilotLimit} selected pilots for draft.`
       );
       return;
     }
 
+    if (blockedByUnassignedGroup) {
+      setPilotMessage("Assign a valid group before selecting pilot for draft.");
+      return;
+    }
+
     if (blockedByGroupLimit) {
-      setPilotMessage("Assign a valid group and ensure group limit is not exceeded.");
+      setPilotMessage(
+        `Group ${blockedByGroupLimit} reached its limit (${activeWizardSeason.draftConfig.groupLimits[blockedByGroupLimit]}).`
+      );
       return;
     }
 
@@ -764,17 +833,6 @@ export function AdminSeasonPage() {
       return;
     }
 
-    const selectedCount = activeWizardSeason.teams.reduce(
-      (count, team) => count + team.pilots.filter((pilot) => pilot.selectedForDraft).length,
-      0
-    );
-    if (selectedCount > nextDraftPilotCount) {
-      setDraftConfigMessage(
-        `You already have ${selectedCount} selected pilots. Increase draft limit or unselect pilots first.`
-      );
-      return;
-    }
-
     const allowedGroups = new Set(PILOT_VALUE_GROUPS.slice(0, nextValueGroupCount));
     const nextGroupLimits: Record<PilotValueGroup, number> = { A: 0, B: 0, C: 0, D: 0, E: 0 };
     for (const group of PILOT_VALUE_GROUPS) {
@@ -793,39 +851,72 @@ export function AdminSeasonPage() {
       nextGroupLimits[group] = parsedLimit;
     }
 
-    const hasOutOfRangePilots = activeWizardSeason.teams.some((team) =>
-      team.pilots.some((pilot) => pilot.valueGroup !== "unassigned" && !allowedGroups.has(pilot.valueGroup))
-    );
-    if (hasOutOfRangePilots) {
-      setDraftConfigMessage(
-        "Some pilots use value groups outside the new limit. Update pilot groups first."
-      );
-      return;
-    }
+    let movedToUnassignedCount = 0;
+    let unselectedByGroupRulesCount = 0;
+    let unselectedByDraftLimitCount = 0;
 
-    const selectedByGroup = activeWizardSeason.teams.reduce(
-      (groupCounts, team) => {
+    let nextTeams = activeWizardSeason.teams.map((team) => ({
+      ...team,
+      pilots: team.pilots.map((pilot) => {
+        if (pilot.valueGroup !== "unassigned" && !allowedGroups.has(pilot.valueGroup)) {
+          movedToUnassignedCount += 1;
+          return {
+            ...pilot,
+            valueGroup: "unassigned" as const,
+            selectedForDraft: false,
+          };
+        }
+        return { ...pilot };
+      }),
+    }));
+
+    const keptSelectedByGroup: Record<PilotValueGroup, number> = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+    nextTeams = nextTeams.map((team) => ({
+      ...team,
+      pilots: team.pilots.map((pilot) => {
+        if (!pilot.selectedForDraft) {
+          return pilot;
+        }
+        if (pilot.valueGroup === "unassigned") {
+          unselectedByGroupRulesCount += 1;
+          return { ...pilot, selectedForDraft: false };
+        }
+        if (keptSelectedByGroup[pilot.valueGroup] >= nextGroupLimits[pilot.valueGroup]) {
+          unselectedByGroupRulesCount += 1;
+          return { ...pilot, selectedForDraft: false };
+        }
+        keptSelectedByGroup[pilot.valueGroup] += 1;
+        return pilot;
+      }),
+    }));
+
+    let keptSelectedTotal = 0;
+    nextTeams = nextTeams.map((team) => ({
+      ...team,
+      pilots: team.pilots.map((pilot) => {
+        if (!pilot.selectedForDraft) {
+          return pilot;
+        }
+        if (keptSelectedTotal >= nextDraftPilotCount) {
+          unselectedByDraftLimitCount += 1;
+          return { ...pilot, selectedForDraft: false };
+        }
+        keptSelectedTotal += 1;
+        return pilot;
+      }),
+    }));
+
+    const pilotsByGroupAfterSave = nextTeams.reduce(
+      (counts, team) => {
         team.pilots.forEach((pilot) => {
-          if (pilot.selectedForDraft) {
-            if (pilot.valueGroup !== "unassigned") {
-              groupCounts[pilot.valueGroup] += 1;
-            }
+          if (pilot.valueGroup !== "unassigned") {
+            counts[pilot.valueGroup] += 1;
           }
         });
-        return groupCounts;
+        return counts;
       },
       { A: 0, B: 0, C: 0, D: 0, E: 0 } as Record<PilotValueGroup, number>
     );
-
-    const exceedingGroup = PILOT_VALUE_GROUPS.find(
-      (group) => selectedByGroup[group] > nextGroupLimits[group]
-    );
-    if (exceedingGroup) {
-      setDraftConfigMessage(
-        `Selected pilots in group ${exceedingGroup} exceed new limit (${nextGroupLimits[exceedingGroup]}).`
-      );
-      return;
-    }
 
     const result = updateSeason(activeWizardSeason.id, {
       draftConfig: {
@@ -833,6 +924,7 @@ export function AdminSeasonPage() {
         draftPilotCount: nextDraftPilotCount,
         groupLimits: nextGroupLimits,
       },
+      teams: nextTeams,
     });
 
     if (!result.success) {
@@ -840,11 +932,29 @@ export function AdminSeasonPage() {
       return;
     }
 
-    if (!allowedGroups.has(pilotValueGroupDraft)) {
-      setPilotValueGroupDraft("A");
+    const firstUsableGroup = PILOT_VALUE_GROUPS.slice(0, nextValueGroupCount).find(
+      (group) => pilotsByGroupAfterSave[group] < nextGroupLimits[group]
+    );
+    if (!allowedGroups.has(pilotValueGroupDraft) || pilotsByGroupAfterSave[pilotValueGroupDraft] >= nextGroupLimits[pilotValueGroupDraft]) {
+      setPilotValueGroupDraft(firstUsableGroup ?? "A");
     }
 
-    setDraftConfigMessage("Draft config saved.");
+    const adjustments: string[] = [];
+    if (movedToUnassignedCount > 0) {
+      adjustments.push(`${movedToUnassignedCount} pilots moved to unassigned`);
+    }
+    if (unselectedByGroupRulesCount > 0) {
+      adjustments.push(`${unselectedByGroupRulesCount} pilots unselected by group limits`);
+    }
+    if (unselectedByDraftLimitCount > 0) {
+      adjustments.push(`${unselectedByDraftLimitCount} pilots unselected by draft limit`);
+    }
+
+    setDraftConfigMessage(
+      adjustments.length > 0
+        ? `Draft config saved. Adjustments: ${adjustments.join(", ")}.`
+        : "Draft config saved."
+    );
   };
 
   const handleActivateSeason = () => {
@@ -1070,7 +1180,7 @@ export function AdminSeasonPage() {
           pilotMessage={pilotMessage}
           importMessage={importMessage}
           availableValueGroups={availableValueGroups}
-          draftPilotCount={activeWizardSeason.draftConfig.draftPilotCount}
+          draftPilotCount={effectiveDraftPilotLimit}
           draftPilotCountDraft={draftPilotCountDraft}
           valueGroupCountDraft={valueGroupCountDraft}
           groupLimitDrafts={groupLimitDrafts}

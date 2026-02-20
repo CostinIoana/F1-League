@@ -88,7 +88,7 @@ export function AppShell({
           <div className="flex items-center justify-between md:block">
             <div className="text-lg font-bold">
               <span className="font-mono-app text-[var(--color-primary-500)]">F1</span>{" "}
-              League
+              Campina
             </div>
           </div>
 

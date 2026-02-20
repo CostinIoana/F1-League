@@ -18,7 +18,7 @@ function createDefaultGroupLimits(draftPilotCount: number): Record<PilotValueGro
 const defaultSeasons: Season[] = [
   {
     id: "f1-2026",
-    name: "F1 League",
+    name: "F1 Campina",
     year: 2026,
     entryFee: 50,
     draftConfig: {
@@ -32,7 +32,7 @@ const defaultSeasons: Season[] = [
   },
   {
     id: "f1-2025",
-    name: "F1 League",
+    name: "F1 Campina",
     year: 2025,
     entryFee: 45,
     draftConfig: {
@@ -46,7 +46,7 @@ const defaultSeasons: Season[] = [
   },
   {
     id: "f1-2024",
-    name: "F1 League",
+    name: "F1 Campina",
     year: 2024,
     entryFee: 40,
     draftConfig: {
@@ -261,7 +261,7 @@ export function fetchSessionData(): Promise<SessionData> {
   return Promise.resolve({
     user: {
       name: "Costin",
-      email: "costin@f1league.local",
+      email: "costin@f1campina.local",
       role: "admin",
       permissions: [
         "admin:season:read",

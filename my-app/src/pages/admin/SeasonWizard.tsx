@@ -1,6 +1,6 @@
 import { Button } from "../../components/ui/Button";
 import { Surface } from "../../components/ui/Surface";
-import type { PilotGroup, PilotValueGroup, Season } from "../../seasons/types";
+import { PILOT_VALUE_GROUPS, type PilotGroup, type PilotValueGroup, type Season } from "../../seasons/types";
 
 const seasonWizardSteps = [
   "Season Info",
@@ -141,6 +141,24 @@ export function SeasonWizard({
     }))
   );
   const selectedPilots = allPilots.filter((pilot) => pilot.selectedForDraft);
+  const parsedValueGroupCountDraft = Number(valueGroupCountDraft);
+  const previewValueGroupCount =
+    Number.isInteger(parsedValueGroupCountDraft) && parsedValueGroupCountDraft >= 1 && parsedValueGroupCountDraft <= 5
+      ? parsedValueGroupCountDraft
+      : availableValueGroups.length;
+  const draftRuleGroups = PILOT_VALUE_GROUPS.slice(0, previewValueGroupCount);
+  const pilotsByGroup: Record<PilotValueGroup, number> = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+  allPilots.forEach((pilot) => {
+    if (pilot.valueGroup !== "unassigned") {
+      pilotsByGroup[pilot.valueGroup] += 1;
+    }
+  });
+  const selectedByGroup: Record<PilotValueGroup, number> = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+  selectedPilots.forEach((pilot) => {
+    if (pilot.valueGroup !== "unassigned") {
+      selectedByGroup[pilot.valueGroup] += 1;
+    }
+  });
   const draftPoolPreview = selectedPilots.slice(0, draftPilotCount);
   const draftPoolByGroup: Record<PilotValueGroup, number> = { A: 0, B: 0, C: 0, D: 0, E: 0 };
   draftPoolPreview.forEach((pilot) => {
@@ -410,7 +428,11 @@ export function SeasonWizard({
                 className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
               >
                 {availableValueGroups.map((group) => (
-                  <option key={group} value={group}>
+                  <option
+                    key={group}
+                    value={group}
+                    disabled={pilotsByGroup[group] >= season.draftConfig.groupLimits[group]}
+                  >
                     {group}
                   </option>
                 ))}
@@ -459,6 +481,25 @@ export function SeasonWizard({
             <div className="text-xs font-semibold uppercase tracking-wide text-[var(--color-neutral-600)]">
               Draft Rules
             </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {draftRuleGroups.map((group) => {
+                const used = pilotsByGroup[group];
+                const limit = season.draftConfig.groupLimits[group];
+                const isFull = used >= limit;
+                return (
+                  <span
+                    key={group}
+                    className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                      isFull
+                        ? "border-[var(--color-primary-500)] text-[var(--color-primary-500)]"
+                        : "border-[var(--color-neutral-200)] text-[var(--color-neutral-600)]"
+                    }`}
+                  >
+                    Group {group}: {used}/{limit} {isFull ? "FULL" : ""}
+                  </span>
+                );
+              })}
+            </div>
             <div className="mt-2 grid gap-2 md:grid-cols-[180px_180px_auto]">
               <label className="space-y-1">
                 <span className="text-xs font-semibold text-[var(--color-neutral-700)]">Draft Pilots</span>
@@ -489,7 +530,7 @@ export function SeasonWizard({
               )}
             </div>
             <div className="mt-2 grid gap-2 md:grid-cols-5">
-              {availableValueGroups.map((group) => (
+              {PILOT_VALUE_GROUPS.map((group) => (
                 <label key={group} className="space-y-1">
                   <span className="text-xs font-semibold text-[var(--color-neutral-700)]">
                     Group {group} Limit
@@ -498,7 +539,7 @@ export function SeasonWizard({
                     type="number"
                     value={groupLimitDrafts[group]}
                     onChange={(event) => onGroupLimitChange(group, event.target.value)}
-                    disabled={isLocked}
+                    disabled={isLocked || !draftRuleGroups.includes(group)}
                     className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
                   />
                 </label>
@@ -556,7 +597,14 @@ export function SeasonWizard({
                           >
                             <option value="unassigned">Unassigned</option>
                             {availableValueGroups.map((group) => (
-                              <option key={group} value={group}>
+                              <option
+                                key={group}
+                                value={group}
+                                disabled={
+                                  group !== pilot.valueGroup &&
+                                  pilotsByGroup[group] >= season.draftConfig.groupLimits[group]
+                                }
+                              >
                                 Group {group}
                               </option>
                             ))}
@@ -566,7 +614,14 @@ export function SeasonWizard({
                             size="sm"
                             variant={pilot.selectedForDraft ? "solid" : "outline"}
                             onClick={() => onTogglePilotDraftSelection(team.id, pilot.id)}
-                            disabled={isLocked || pilot.valueGroup === "unassigned"}
+                            disabled={
+                              isLocked ||
+                              pilot.valueGroup === "unassigned" ||
+                              (!pilot.selectedForDraft && selectedPilots.length >= draftPilotCount) ||
+                              (!pilot.selectedForDraft &&
+                                selectedByGroup[pilot.valueGroup] >=
+                                  season.draftConfig.groupLimits[pilot.valueGroup])
+                            }
                           >
                             {pilot.selectedForDraft ? "Unselect" : "Select"}
                           </Button>

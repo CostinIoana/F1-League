@@ -82,7 +82,7 @@ export function NewDraftSeasonForm({ onCreateDraft }: NewDraftSeasonFormProps) {
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="F1 League"
+            placeholder="F1 Campina"
             className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
           />
           {errors.name && <span className="text-xs text-[var(--color-primary-500)]">{errors.name}</span>}
