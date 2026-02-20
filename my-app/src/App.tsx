@@ -58,7 +58,7 @@ function AppRoutes() {
           <AppShell
             user={session.user}
             seasons={session.seasons}
-            selectedSeason={session.selectedSeason}
+            selectedSeasonId={session.selectedSeasonId}
             onSeasonChange={setSelectedSeason}
             onProfile={handleProfile}
             onAccountSettings={handleAccountSettings}

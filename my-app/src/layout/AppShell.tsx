@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import type { SessionUser } from "../session/types";
 import { navItems } from "../navigation";
+import type { Season } from "../seasons/types";
 
 type AppShellProps = {
   user: SessionUser;
-  seasons: string[];
-  selectedSeason: string;
-  onSeasonChange: (season: string) => void;
+  seasons: Season[];
+  selectedSeasonId: string;
+  onSeasonChange: (seasonId: string) => void;
   onProfile?: () => void;
   onAccountSettings?: () => void;
   onSignOut?: () => void;
@@ -33,13 +34,14 @@ function getInitialTheme(): ThemeMode {
 export function AppShell({
   user,
   seasons,
-  selectedSeason,
+  selectedSeasonId,
   onSeasonChange,
   onProfile,
   onAccountSettings,
   onSignOut,
 }: AppShellProps) {
-  const seasonOptions = seasons.length > 0 ? seasons : [selectedSeason];
+  const selectedSeason =
+    seasons.find((season) => season.id === selectedSeasonId) ?? seasons[0] ?? null;
   const displayName = user.name.trim() || "User";
   const role = user.role;
   const mainNav = navItems.filter((item) => item.section === "main" && item.roles.includes(role));
@@ -133,13 +135,13 @@ export function AppShell({
                 </label>
                 <select
                   id="season-select"
-                  value={selectedSeason}
+                  value={selectedSeason?.id ?? ""}
                   onChange={(event) => onSeasonChange(event.target.value)}
                   className="rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-semibold text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
                 >
-                  {seasonOptions.map((season) => (
-                    <option key={season} value={season}>
-                      {season}
+                  {seasons.map((season) => (
+                    <option key={season.id} value={season.id}>
+                      {season.name}
                     </option>
                   ))}
                 </select>

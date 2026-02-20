@@ -3,7 +3,7 @@ import { fetchSessionData } from "./api";
 import { SessionContext } from "./context";
 import type { SessionData } from "./types";
 
-const SEASON_STORAGE_KEY = "f1league.selectedSeason";
+const SEASON_STORAGE_KEY = "f1league.selectedSeasonId";
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SessionData | null>(null);
@@ -17,12 +17,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       const persistedSeason = localStorage.getItem(SEASON_STORAGE_KEY);
-      const selectedSeason =
-        persistedSeason && data.seasons.includes(persistedSeason)
+      const selectedSeasonId =
+        persistedSeason && data.seasons.some((season) => season.id === persistedSeason)
           ? persistedSeason
-          : data.selectedSeason;
+          : data.selectedSeasonId;
 
-      setSession({ ...data, selectedSeason });
+      setSession({ ...data, selectedSeasonId });
       setLoading(false);
     });
 
@@ -31,13 +31,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const setSelectedSeason = (season: string) => {
+  const setSelectedSeason = (seasonId: string) => {
     setSession((current) => {
-      if (!current || !current.seasons.includes(season)) {
+      if (!current || !current.seasons.some((season) => season.id === seasonId)) {
         return current;
       }
-      localStorage.setItem(SEASON_STORAGE_KEY, season);
-      return { ...current, selectedSeason: season };
+      localStorage.setItem(SEASON_STORAGE_KEY, seasonId);
+      return { ...current, selectedSeasonId: seasonId };
     });
   };
 

@@ -1,3 +1,5 @@
+import type { Season } from "../seasons/types";
+
 export type UserRole = "admin" | "player";
 export type Permission =
   | "admin:season:read"
@@ -14,6 +16,6 @@ export type SessionUser = {
 
 export type SessionData = {
   user: SessionUser;
-  seasons: string[];
-  selectedSeason: string;
+  seasons: Season[];
+  selectedSeasonId: string;
 };

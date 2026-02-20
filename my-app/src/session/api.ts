@@ -13,7 +13,11 @@ export function fetchSessionData(): Promise<SessionData> {
         "admin:notifications:read",
       ],
     },
-    seasons: ["F1 2026", "F1 2025", "F1 2024"],
-    selectedSeason: "F1 2026",
+    seasons: [
+      { id: "f1-2026", name: "F1 2026", status: "draft" },
+      { id: "f1-2025", name: "F1 2025", status: "active" },
+      { id: "f1-2024", name: "F1 2024", status: "completed" },
+    ],
+    selectedSeasonId: "f1-2025",
   });
 }
