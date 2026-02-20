@@ -1,4 +1,4 @@
-import type { Pilot, PilotValueGroup, Race, Season, Team } from "../seasons/types";
+import type { Pilot, PilotGroup, PilotValueGroup, Race, Season, Team } from "../seasons/types";
 import type { SessionData } from "./types";
 
 const SEASONS_STORAGE_KEY = "f1league.seasons";
@@ -94,14 +94,15 @@ function normalizePilot(value: unknown): Pilot | null {
   if (typeof candidate.id !== "string" || typeof candidate.name !== "string") {
     return null;
   }
-  const valueGroup: PilotValueGroup =
+  const valueGroup: PilotGroup =
     candidate.valueGroup === "A" ||
     candidate.valueGroup === "B" ||
     candidate.valueGroup === "C" ||
     candidate.valueGroup === "D" ||
-    candidate.valueGroup === "E"
+    candidate.valueGroup === "E" ||
+    candidate.valueGroup === "unassigned"
       ? candidate.valueGroup
-      : "C";
+      : "unassigned";
 
   return {
     id: candidate.id,
@@ -374,4 +375,17 @@ export function updateSeason(
   writeSeasonsToStorage(nextSeasons);
 
   return { success: true, season: updatedSeason };
+}
+
+export function deleteSeason(seasonId: string): { success: boolean; message?: string } {
+  const seasons = readSeasonsFromStorage();
+  const season = seasons.find((item) => item.id === seasonId);
+
+  if (!season) {
+    return { success: false, message: "Season not found." };
+  }
+
+  const nextSeasons = seasons.filter((item) => item.id !== seasonId);
+  writeSeasonsToStorage(nextSeasons);
+  return { success: true };
 }

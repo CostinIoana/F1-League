@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Surface } from "../../components/ui/Surface";
 import {
   PILOT_VALUE_GROUPS,
+  type PilotGroup,
   type PilotValueGroup,
   type Season,
   type SeasonStatus,
@@ -77,7 +79,7 @@ function createPilotId(name: string, existingIds: Set<string>) {
 }
 
 export function AdminSeasonPage() {
-  const { seasons, getSeasonById, createDraftSeason, updateSeason } = useSeasons();
+  const { seasons, getSeasonById, createDraftSeason, updateSeason, deleteSeason } = useSeasons();
   const [wizardSeasonId, setWizardSeasonId] = useState<string | null>(null);
   const [wizardStep, setWizardStep] = useState(1);
   const [seasonInfoDraft, setSeasonInfoDraft] = useState<SeasonInfoDraft>({
@@ -96,6 +98,7 @@ export function AdminSeasonPage() {
   const [pilotTeamIdDraft, setPilotTeamIdDraft] = useState("");
   const [pilotValueGroupDraft, setPilotValueGroupDraft] = useState<PilotValueGroup>("A");
   const [pilotMessage, setPilotMessage] = useState<string | null>(null);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
   const [draftPilotCountDraft, setDraftPilotCountDraft] = useState("");
   const [valueGroupCountDraft, setValueGroupCountDraft] = useState("");
   const [groupLimitDrafts, setGroupLimitDrafts] = useState<Record<PilotValueGroup, string>>({
@@ -106,6 +109,9 @@ export function AdminSeasonPage() {
     E: "",
   });
   const [draftConfigMessage, setDraftConfigMessage] = useState<string | null>(null);
+  const [activationMessage, setActivationMessage] = useState<string | null>(null);
+  const [seasonActionMessage, setSeasonActionMessage] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ seasonId: string; step: 1 | 2 } | null>(null);
 
   const currencyFormatter = useMemo(
     () => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }),
@@ -146,6 +152,8 @@ export function AdminSeasonPage() {
   };
 
   const handleOpenWizard = (season: Season) => {
+    setSeasonActionMessage(null);
+    setPendingDelete(null);
     setWizardSeasonId(season.id);
     setWizardStep(1);
     setSeasonInfoDraft({
@@ -164,6 +172,7 @@ export function AdminSeasonPage() {
     setPilotTeamIdDraft(season.teams[0]?.id ?? "");
     setPilotValueGroupDraft("A");
     setPilotMessage(null);
+    setImportMessage(null);
     setDraftPilotCountDraft(String(season.draftConfig.draftPilotCount));
     setValueGroupCountDraft(String(season.draftConfig.valueGroupCount));
     setGroupLimitDrafts({
@@ -174,6 +183,7 @@ export function AdminSeasonPage() {
       E: String(season.draftConfig.groupLimits.E),
     });
     setDraftConfigMessage(null);
+    setActivationMessage(null);
   };
 
   const handleCloseWizard = () => {
@@ -190,10 +200,52 @@ export function AdminSeasonPage() {
     setPilotTeamIdDraft("");
     setPilotValueGroupDraft("A");
     setPilotMessage(null);
+    setImportMessage(null);
     setDraftPilotCountDraft("");
     setValueGroupCountDraft("");
     setGroupLimitDrafts({ A: "", B: "", C: "", D: "", E: "" });
     setDraftConfigMessage(null);
+    setActivationMessage(null);
+    setPendingDelete(null);
+  };
+
+  const handleDeleteSeason = (seasonId: string) => {
+    setPendingDelete({ seasonId, step: 1 });
+    setSeasonActionMessage(null);
+  };
+
+  const handleCancelDeleteSeason = () => {
+    setPendingDelete(null);
+  };
+
+  const handleConfirmDeleteSeason = () => {
+    if (!pendingDelete) {
+      return;
+    }
+    const season = seasons.find((item) => item.id === pendingDelete.seasonId);
+    if (!season) {
+      setPendingDelete(null);
+      setSeasonActionMessage("Season not found.");
+      return;
+    }
+
+    if (pendingDelete.step === 1) {
+      setPendingDelete({ seasonId: season.id, step: 2 });
+      return;
+    }
+
+    const result = deleteSeason(season.id);
+    if (!result.success) {
+      setSeasonActionMessage(result.message ?? "Could not delete season.");
+      return;
+    }
+
+    if (wizardSeasonId === season.id) {
+      handleCloseWizard();
+    }
+
+    setPendingDelete(null);
+    setSeasonActionMessage("Season deleted.");
   };
 
   const activeWizardSeason = wizardSeasonId ? getSeasonById(wizardSeasonId) : null;
@@ -202,6 +254,58 @@ export function AdminSeasonPage() {
     0,
     activeWizardSeason?.draftConfig.valueGroupCount ?? 1
   );
+  const activationIssues = (() => {
+    if (!activeWizardSeason) {
+      return ["Season not found."];
+    }
+    const issues: string[] = [];
+    const allPilots = activeWizardSeason.teams.flatMap((team) => team.pilots);
+    const selectedPilots = allPilots.filter((pilot) => pilot.selectedForDraft);
+
+    if (activeWizardSeason.status !== "draft") {
+      issues.push("Season must be in draft status.");
+    }
+    if (activeWizardSeason.races.length === 0) {
+      issues.push("Add at least one race.");
+    }
+    if (activeWizardSeason.teams.length === 0) {
+      issues.push("Add at least one team.");
+    }
+    if (allPilots.length === 0) {
+      issues.push("Add at least one pilot.");
+    }
+    if (allPilots.some((pilot) => pilot.valueGroup === "unassigned")) {
+      issues.push("Assign value groups for all pilots.");
+    }
+    if (selectedPilots.length !== activeWizardSeason.draftConfig.draftPilotCount) {
+      issues.push(
+        `Select exactly ${activeWizardSeason.draftConfig.draftPilotCount} pilots for draft.`
+      );
+    }
+
+    const selectedByGroup = selectedPilots.reduce(
+      (counts, pilot) => {
+        if (pilot.valueGroup !== "unassigned") {
+          counts[pilot.valueGroup] += 1;
+        }
+        return counts;
+      },
+      { A: 0, B: 0, C: 0, D: 0, E: 0 } as Record<PilotValueGroup, number>
+    );
+
+    for (const group of availableValueGroups) {
+      if (selectedByGroup[group] > activeWizardSeason.draftConfig.groupLimits[group]) {
+        issues.push(
+          `Selected pilots in group ${group} exceed limit ${activeWizardSeason.draftConfig.groupLimits[group]}.`
+        );
+      }
+    }
+
+    return issues;
+  })();
+  const canActivateSeason = activationIssues.length === 0;
+  const canDeactivateSeason = activeWizardSeason?.status === "active";
+  const canRevertSeason = activeWizardSeason ? activeWizardSeason.status !== "draft" : false;
 
   const handleSeasonInfoChange = (field: keyof SeasonInfoDraft, value: string) => {
     setSeasonInfoDraft((current) => ({ ...current, [field]: value }));
@@ -237,6 +341,141 @@ export function AdminSeasonPage() {
   const handlePilotValueGroupChange = (value: PilotValueGroup) => {
     setPilotValueGroupDraft(value);
     setPilotMessage(null);
+  };
+
+  const handlePilotGroupChange = (teamId: string, pilotId: string, valueGroup: PilotGroup) => {
+    if (!activeWizardSeason) {
+      setPilotMessage("Not found");
+      return;
+    }
+
+    if (wizardIsLocked) {
+      setPilotMessage("Locked: only draft seasons can be edited.");
+      return;
+    }
+
+    const nextTeams = activeWizardSeason.teams.map((team) => {
+      if (team.id !== teamId) {
+        return team;
+      }
+      return {
+        ...team,
+        pilots: team.pilots.map((pilot) => (pilot.id === pilotId ? { ...pilot, valueGroup } : pilot)),
+      };
+    });
+
+    const result = updateSeason(activeWizardSeason.id, { teams: nextTeams });
+    if (!result.success) {
+      setPilotMessage(result.message ?? "Could not update pilot group.");
+      return;
+    }
+
+    setPilotMessage("Pilot group updated.");
+  };
+
+  const handleImportPilotsFile = async (file: File) => {
+    if (!activeWizardSeason) {
+      setImportMessage("Not found");
+      return;
+    }
+
+    if (wizardIsLocked) {
+      setImportMessage("Locked: only draft seasons can be edited.");
+      return;
+    }
+
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    if (!extension || !["xlsx", "xls", "csv"].includes(extension)) {
+      setImportMessage("Unsupported file type. Use .xlsx, .xls or .csv.");
+      return;
+    }
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: "array" });
+      const firstSheetName = workbook.SheetNames[0];
+      if (!firstSheetName) {
+        setImportMessage("File has no sheets.");
+        return;
+      }
+
+      const worksheet = workbook.Sheets[firstSheetName];
+      const rows = XLSX.utils.sheet_to_json<string[]>(worksheet, { header: 1, blankrows: false });
+      if (rows.length < 2) {
+        setImportMessage("File must contain a header row and at least one data row.");
+        return;
+      }
+
+      const headers = rows[0].map((header) => header.toString().trim().toLowerCase());
+      const teamIndex = headers.findIndex((header) => ["team_name", "team", "echipa"].includes(header));
+      const pilotIndex = headers.findIndex((header) => ["pilot_name", "pilot", "driver", "pilot_nume"].includes(header));
+
+      if (teamIndex === -1 || pilotIndex === -1) {
+        setImportMessage("Missing columns. Required: team_name/team and pilot_name/pilot.");
+        return;
+      }
+
+      const parsed = rows.slice(1).map((row) => ({
+        teamName: (row[teamIndex] ?? "").toString().trim(),
+        pilotName: (row[pilotIndex] ?? "").toString().trim(),
+      }));
+
+      const validRows = parsed.filter((row) => row.teamName && row.pilotName);
+      if (validRows.length === 0) {
+        setImportMessage("No valid rows found.");
+        return;
+      }
+
+      const nextTeams = activeWizardSeason.teams.map((team) => ({ ...team, pilots: [...team.pilots] }));
+      let createdTeams = 0;
+      let createdPilots = 0;
+      let skippedDuplicates = 0;
+
+      for (const row of validRows) {
+        let team = nextTeams.find((item) => item.name.toLowerCase() === row.teamName.toLowerCase());
+        if (!team) {
+          team = {
+            id: createTeamId(row.teamName, new Set(nextTeams.map((item) => item.id))),
+            name: row.teamName,
+            pilots: [],
+          };
+          nextTeams.push(team);
+          createdTeams += 1;
+        }
+
+        const hasPilot = team.pilots.some(
+          (pilot) => pilot.name.toLowerCase() === row.pilotName.toLowerCase()
+        );
+        if (hasPilot) {
+          skippedDuplicates += 1;
+          continue;
+        }
+
+        team.pilots.push({
+          id: createPilotId(row.pilotName, new Set(team.pilots.map((pilot) => pilot.id))),
+          name: row.pilotName,
+          valueGroup: "unassigned",
+          selectedForDraft: false,
+        });
+        createdPilots += 1;
+      }
+
+      const result = updateSeason(activeWizardSeason.id, { teams: nextTeams });
+      if (!result.success) {
+        setImportMessage(result.message ?? "Could not import data.");
+        return;
+      }
+
+      if (!pilotTeamIdDraft && nextTeams.length > 0) {
+        setPilotTeamIdDraft(nextTeams[0].id);
+      }
+
+      setImportMessage(
+        `Import completed: ${createdPilots} pilots, ${createdTeams} teams, ${skippedDuplicates} duplicates skipped.`
+      );
+    } catch {
+      setImportMessage("Could not read file. Please check format and try again.");
+    }
   };
 
   const handleDraftPilotCountChange = (value: string) => {
@@ -435,7 +674,7 @@ export function AdminSeasonPage() {
     const selectedByGroup = activeWizardSeason.teams.reduce(
       (groupCounts, team) => {
         team.pilots.forEach((pilot) => {
-          if (pilot.selectedForDraft) {
+          if (pilot.selectedForDraft && pilot.valueGroup !== "unassigned") {
             groupCounts[pilot.valueGroup] += 1;
           }
         });
@@ -463,8 +702,13 @@ export function AdminSeasonPage() {
             blockedByLimit = true;
             return pilot;
           }
+          if (!pilot.selectedForDraft && pilot.valueGroup === "unassigned") {
+            blockedByGroupLimit = true;
+            return pilot;
+          }
           if (
             !pilot.selectedForDraft &&
+            pilot.valueGroup !== "unassigned" &&
             selectedByGroup[pilot.valueGroup] >= activeWizardSeason.draftConfig.groupLimits[pilot.valueGroup]
           ) {
             blockedByGroupLimit = true;
@@ -483,7 +727,7 @@ export function AdminSeasonPage() {
     }
 
     if (blockedByGroupLimit) {
-      setPilotMessage("Group limit reached for this value group.");
+      setPilotMessage("Assign a valid group and ensure group limit is not exceeded.");
       return;
     }
 
@@ -550,7 +794,7 @@ export function AdminSeasonPage() {
     }
 
     const hasOutOfRangePilots = activeWizardSeason.teams.some((team) =>
-      team.pilots.some((pilot) => !allowedGroups.has(pilot.valueGroup))
+      team.pilots.some((pilot) => pilot.valueGroup !== "unassigned" && !allowedGroups.has(pilot.valueGroup))
     );
     if (hasOutOfRangePilots) {
       setDraftConfigMessage(
@@ -563,7 +807,9 @@ export function AdminSeasonPage() {
       (groupCounts, team) => {
         team.pilots.forEach((pilot) => {
           if (pilot.selectedForDraft) {
-            groupCounts[pilot.valueGroup] += 1;
+            if (pilot.valueGroup !== "unassigned") {
+              groupCounts[pilot.valueGroup] += 1;
+            }
           }
         });
         return groupCounts;
@@ -599,6 +845,88 @@ export function AdminSeasonPage() {
     }
 
     setDraftConfigMessage("Draft config saved.");
+  };
+
+  const handleActivateSeason = () => {
+    if (!activeWizardSeason) {
+      setActivationMessage("Not found");
+      return;
+    }
+    if (!canActivateSeason) {
+      setActivationMessage("Cannot activate until all checklist items are resolved.");
+      return;
+    }
+
+    const currentActiveSeason = seasons.find(
+      (season) => season.status === "active" && season.id !== activeWizardSeason.id
+    );
+    if (currentActiveSeason) {
+      const demoteResult = updateSeason(currentActiveSeason.id, { status: "completed" });
+      if (!demoteResult.success) {
+        setActivationMessage(demoteResult.message ?? "Could not update existing active season.");
+        return;
+      }
+    }
+
+    const activateResult = updateSeason(activeWizardSeason.id, { status: "active" });
+    if (!activateResult.success) {
+      setActivationMessage(activateResult.message ?? "Could not activate season.");
+      return;
+    }
+
+    setActivationMessage("Season activated.");
+  };
+
+  const handleDeactivateSeason = () => {
+    if (!activeWizardSeason) {
+      setActivationMessage("Not found");
+      return;
+    }
+    if (activeWizardSeason.status !== "active") {
+      setActivationMessage("Only active seasons can be deactivated.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Deactivate season "${activeWizardSeason.name} ${activeWizardSeason.year}"? It will move to completed.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const result = updateSeason(activeWizardSeason.id, { status: "completed" });
+    if (!result.success) {
+      setActivationMessage(result.message ?? "Could not deactivate season.");
+      return;
+    }
+
+    setActivationMessage("Season deactivated (completed).");
+  };
+
+  const handleRevertSeason = () => {
+    if (!activeWizardSeason) {
+      setActivationMessage("Not found");
+      return;
+    }
+    if (activeWizardSeason.status === "draft") {
+      setActivationMessage("Season is already draft.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Revert season "${activeWizardSeason.name} ${activeWizardSeason.year}" to draft?`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const result = updateSeason(activeWizardSeason.id, { status: "draft" });
+    if (!result.success) {
+      setActivationMessage(result.message ?? "Could not revert season.");
+      return;
+    }
+
+    setActivationMessage("Season reverted to draft.");
   };
 
   const handleSaveSeasonInfo = () => {
@@ -683,7 +1011,31 @@ export function AdminSeasonPage() {
         <p className="text-sm text-[var(--color-neutral-600)]">
           Manage seasons by status and configure draft seasons in a 6-step wizard.
         </p>
+        {seasonActionMessage && (
+          <div className="text-xs text-[var(--color-neutral-600)]">{seasonActionMessage}</div>
+        )}
       </header>
+
+      {pendingDelete && (
+        <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
+          <div className="text-sm font-semibold text-[var(--color-neutral-900)]">
+            Delete Confirmation {pendingDelete.step}/2
+          </div>
+          <div className="mt-1 text-xs text-[var(--color-neutral-600)]">
+            {pendingDelete.step === 1
+              ? "Confirm that you want to delete this season."
+              : "Final confirmation: this action is permanent."}
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <Button type="button" size="sm" tone="primary" onClick={handleConfirmDeleteSeason}>
+              {pendingDelete.step === 1 ? "Continue" : "Delete Season"}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={handleCancelDeleteSeason}>
+              Cancel
+            </Button>
+          </div>
+        </Surface>
+      )}
 
       {wizardSeasonId && !activeWizardSeason && (
         <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
@@ -716,12 +1068,18 @@ export function AdminSeasonPage() {
           pilotTeamIdDraft={pilotTeamIdDraft}
           pilotValueGroupDraft={pilotValueGroupDraft}
           pilotMessage={pilotMessage}
+          importMessage={importMessage}
           availableValueGroups={availableValueGroups}
           draftPilotCount={activeWizardSeason.draftConfig.draftPilotCount}
           draftPilotCountDraft={draftPilotCountDraft}
           valueGroupCountDraft={valueGroupCountDraft}
           groupLimitDrafts={groupLimitDrafts}
           draftConfigMessage={draftConfigMessage}
+          activationIssues={activationIssues}
+          activationMessage={activationMessage}
+          canActivateSeason={canActivateSeason}
+          canDeactivateSeason={canDeactivateSeason}
+          canRevertSeason={canRevertSeason}
           onClose={handleCloseWizard}
           onStepSelect={handleWizardStepSelect}
           onBack={handleWizardBack}
@@ -736,12 +1094,17 @@ export function AdminSeasonPage() {
           onPilotNameChange={handlePilotNameChange}
           onPilotTeamIdChange={handlePilotTeamIdChange}
           onPilotValueGroupChange={handlePilotValueGroupChange}
+          onPilotGroupChange={handlePilotGroupChange}
           onAddPilot={handleAddPilot}
           onTogglePilotDraftSelection={handleTogglePilotDraftSelection}
+          onImportPilotsFile={handleImportPilotsFile}
           onDraftPilotCountChange={handleDraftPilotCountChange}
           onValueGroupCountChange={handleValueGroupCountChange}
           onGroupLimitChange={handleGroupLimitChange}
           onSaveDraftConfig={handleSaveDraftConfig}
+          onActivateSeason={handleActivateSeason}
+          onDeactivateSeason={handleDeactivateSeason}
+          onRevertSeason={handleRevertSeason}
         />
       )}
 
@@ -763,11 +1126,17 @@ export function AdminSeasonPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              {season.status === "draft" && (
-                <Button type="button" size="sm" variant="outline" onClick={() => handleOpenWizard(season)}>
-                  Edit
-                </Button>
-              )}
+              <Button type="button" size="sm" variant="outline" onClick={() => handleOpenWizard(season)}>
+                {season.status === "draft" ? "Edit" : "View"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => handleDeleteSeason(season.id)}
+              >
+                Delete
+              </Button>
               <Badge tone={statusToneMap[season.status]}>{statusLabelMap[season.status]}</Badge>
             </div>
           </Surface>

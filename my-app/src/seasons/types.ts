@@ -7,13 +7,14 @@ export type Race = {
 };
 
 export type PilotValueGroup = "A" | "B" | "C" | "D" | "E";
+export type PilotGroup = PilotValueGroup | "unassigned";
 
 export const PILOT_VALUE_GROUPS: PilotValueGroup[] = ["A", "B", "C", "D", "E"];
 
 export type Pilot = {
   id: string;
   name: string;
-  valueGroup: PilotValueGroup;
+  valueGroup: PilotGroup;
   selectedForDraft: boolean;
 };
 

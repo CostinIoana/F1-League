@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import {
   createDraftSeason as createDraftSeasonApi,
+  deleteSeason as deleteSeasonApi,
   getSeasons,
   type CreateDraftSeasonPayload,
   type UpdateSeasonPatch,
@@ -34,10 +35,19 @@ export function useSeasons() {
     [seasons]
   );
 
+  const deleteSeason = useCallback((seasonId: string) => {
+    const result = deleteSeasonApi(seasonId);
+    if (result.success) {
+      setSeasons((current) => current.filter((season) => season.id !== seasonId));
+    }
+    return result;
+  }, []);
+
   return {
     seasons,
     getSeasonById,
     createDraftSeason,
     updateSeason,
+    deleteSeason,
   };
 }

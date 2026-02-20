@@ -1,14 +1,14 @@
 import { Button } from "../../components/ui/Button";
 import { Surface } from "../../components/ui/Surface";
-import type { PilotValueGroup, Season } from "../../seasons/types";
+import type { PilotGroup, PilotValueGroup, Season } from "../../seasons/types";
 
 const seasonWizardSteps = [
   "Season Info",
   "Race Calendar",
   "Teams",
   "Pilots",
-  "Calendar",
   "Scoring",
+  "Review",
 ] as const;
 
 export type SeasonInfoDraft = {
@@ -39,12 +39,18 @@ type SeasonWizardProps = {
   pilotTeamIdDraft: string;
   pilotValueGroupDraft: PilotValueGroup;
   pilotMessage?: string | null;
+  importMessage?: string | null;
   availableValueGroups: PilotValueGroup[];
   draftPilotCount: number;
   draftPilotCountDraft: string;
   valueGroupCountDraft: string;
   groupLimitDrafts: Record<PilotValueGroup, string>;
   draftConfigMessage?: string | null;
+  activationIssues: string[];
+  activationMessage?: string | null;
+  canActivateSeason: boolean;
+  canDeactivateSeason: boolean;
+  canRevertSeason: boolean;
   onClose: () => void;
   onStepSelect: (step: number) => void;
   onBack: () => void;
@@ -59,12 +65,17 @@ type SeasonWizardProps = {
   onPilotNameChange: (value: string) => void;
   onPilotTeamIdChange: (value: string) => void;
   onPilotValueGroupChange: (value: PilotValueGroup) => void;
+  onPilotGroupChange: (teamId: string, pilotId: string, valueGroup: PilotGroup) => void;
   onAddPilot: () => void;
   onTogglePilotDraftSelection: (teamId: string, pilotId: string) => void;
+  onImportPilotsFile: (file: File) => void;
   onDraftPilotCountChange: (value: string) => void;
   onValueGroupCountChange: (value: string) => void;
   onGroupLimitChange: (group: PilotValueGroup, value: string) => void;
   onSaveDraftConfig: () => void;
+  onActivateSeason: () => void;
+  onDeactivateSeason: () => void;
+  onRevertSeason: () => void;
 };
 
 export function SeasonWizard({
@@ -83,12 +94,18 @@ export function SeasonWizard({
   pilotTeamIdDraft,
   pilotValueGroupDraft,
   pilotMessage,
+  importMessage,
   availableValueGroups,
   draftPilotCount,
   draftPilotCountDraft,
   valueGroupCountDraft,
   groupLimitDrafts,
   draftConfigMessage,
+  activationIssues,
+  activationMessage,
+  canActivateSeason,
+  canDeactivateSeason,
+  canRevertSeason,
   onClose,
   onStepSelect,
   onBack,
@@ -103,12 +120,17 @@ export function SeasonWizard({
   onPilotNameChange,
   onPilotTeamIdChange,
   onPilotValueGroupChange,
+  onPilotGroupChange,
   onAddPilot,
   onTogglePilotDraftSelection,
+  onImportPilotsFile,
   onDraftPilotCountChange,
   onValueGroupCountChange,
   onGroupLimitChange,
   onSaveDraftConfig,
+  onActivateSeason,
+  onDeactivateSeason,
+  onRevertSeason,
 }: SeasonWizardProps) {
   const lastStep = seasonWizardSteps.length;
   const allPilots = season.teams.flatMap((team) =>
@@ -122,7 +144,9 @@ export function SeasonWizard({
   const draftPoolPreview = selectedPilots.slice(0, draftPilotCount);
   const draftPoolByGroup: Record<PilotValueGroup, number> = { A: 0, B: 0, C: 0, D: 0, E: 0 };
   draftPoolPreview.forEach((pilot) => {
-    draftPoolByGroup[pilot.valueGroup] += 1;
+    if (pilot.valueGroup !== "unassigned") {
+      draftPoolByGroup[pilot.valueGroup] += 1;
+    }
   });
 
   return (
@@ -408,6 +432,28 @@ export function SeasonWizard({
             </div>
           )}
           {pilotMessage && <div className="text-xs text-[var(--color-neutral-600)]">{pilotMessage}</div>}
+          <div className="rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] p-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-[var(--color-neutral-600)]">
+              Import Teams + Pilots
+            </div>
+            <div className="mt-2 text-xs text-[var(--color-neutral-600)]">
+              File columns required: <code>team_name</code> and <code>pilot_name</code>.
+            </div>
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              disabled={isLocked}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  onImportPilotsFile(file);
+                }
+                event.currentTarget.value = "";
+              }}
+              className="mt-2 block w-full text-sm text-[var(--color-neutral-700)]"
+            />
+            {importMessage && <div className="mt-2 text-xs text-[var(--color-neutral-600)]">{importMessage}</div>}
+          </div>
 
           <div className="rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-[var(--color-neutral-600)]">
@@ -497,23 +543,84 @@ export function SeasonWizard({
                     team.pilots.map((pilot) => (
                       <div key={pilot.id} className="flex items-center justify-between gap-2 text-sm">
                         <span>
-                          {pilot.name} | Group {pilot.valueGroup}
+                          {pilot.name}
                         </span>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={pilot.selectedForDraft ? "solid" : "outline"}
-                          onClick={() => onTogglePilotDraftSelection(team.id, pilot.id)}
-                          disabled={isLocked}
-                        >
-                          {pilot.selectedForDraft ? "Unselect" : "Select"}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={pilot.valueGroup}
+                            onChange={(event) =>
+                              onPilotGroupChange(team.id, pilot.id, event.target.value as PilotGroup)
+                            }
+                            disabled={isLocked}
+                            className="rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
+                          >
+                            <option value="unassigned">Unassigned</option>
+                            {availableValueGroups.map((group) => (
+                              <option key={group} value={group}>
+                                Group {group}
+                              </option>
+                            ))}
+                          </select>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={pilot.selectedForDraft ? "solid" : "outline"}
+                            onClick={() => onTogglePilotDraftSelection(team.id, pilot.id)}
+                            disabled={isLocked || pilot.valueGroup === "unassigned"}
+                          >
+                            {pilot.selectedForDraft ? "Unselect" : "Select"}
+                          </Button>
+                        </div>
                       </div>
                     ))
                   )}
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      ) : currentStep === 6 ? (
+        <div className="space-y-3">
+          <div className="text-sm font-semibold text-[var(--color-neutral-900)]">Step 6: Review & Activate</div>
+
+          <div className="rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-neutral-800)]">
+            <div>Status: {season.status}</div>
+            <div>Races: {season.races.length}</div>
+            <div>Teams: {season.teams.length}</div>
+            <div>Pilots: {allPilots.length}</div>
+            <div>
+              Selected for draft: {selectedPilots.length}/{draftPilotCount}
+            </div>
+          </div>
+
+          {activationIssues.length > 0 ? (
+            <div className="rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-[var(--color-neutral-600)]">
+                Activation Checklist
+              </div>
+              <div className="mt-2 space-y-1 text-sm text-[var(--color-neutral-700)]">
+                {activationIssues.map((issue) => (
+                  <div key={issue}>- {issue}</div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-[var(--color-neutral-700)]">
+              Season setup is valid. You can activate this season.
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <Button type="button" size="sm" onClick={onActivateSeason} disabled={!canActivateSeason}>
+              Activate Season
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={onDeactivateSeason} disabled={!canDeactivateSeason}>
+              Deactivate
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={onRevertSeason} disabled={!canRevertSeason}>
+              Revert To Draft
+            </Button>
+            {activationMessage && <span className="text-xs text-[var(--color-neutral-600)]">{activationMessage}</span>}
           </div>
         </div>
       ) : (
