@@ -28,7 +28,11 @@ type SeasonWizardProps = {
   currentStep: number;
   infoDraft: SeasonInfoDraft;
   infoErrors: SeasonInfoErrors;
-  isLocked: boolean;
+  canEditSeasonInfo: boolean;
+  canEditCalendar: boolean;
+  canEditTeams: boolean;
+  canEditPilots: boolean;
+  canEditDraftRules: boolean;
   infoMessage?: string | null;
   raceNameDraft: string;
   raceDateDraft: string;
@@ -60,6 +64,9 @@ type SeasonWizardProps = {
   onRaceNameChange: (value: string) => void;
   onRaceDateChange: (value: string) => void;
   onAddRace: () => void;
+  onUpdateRaceDate: (raceId: string, date: string) => void;
+  onMoveRace: (raceId: string, direction: "up" | "down") => void;
+  onToggleRaceLock: (raceId: string) => void;
   onTeamNameChange: (value: string) => void;
   onAddTeam: () => void;
   onPilotNameChange: (value: string) => void;
@@ -83,7 +90,11 @@ export function SeasonWizard({
   currentStep,
   infoDraft,
   infoErrors,
-  isLocked,
+  canEditSeasonInfo,
+  canEditCalendar,
+  canEditTeams,
+  canEditPilots,
+  canEditDraftRules,
   infoMessage,
   raceNameDraft,
   raceDateDraft,
@@ -115,6 +126,9 @@ export function SeasonWizard({
   onRaceNameChange,
   onRaceDateChange,
   onAddRace,
+  onUpdateRaceDate,
+  onMoveRace,
+  onToggleRaceLock,
   onTeamNameChange,
   onAddTeam,
   onPilotNameChange,
@@ -215,7 +229,7 @@ export function SeasonWizard({
               <input
                 value={infoDraft.name}
                 onChange={(event) => onInfoChange("name", event.target.value)}
-                disabled={isLocked}
+                disabled={!canEditSeasonInfo}
                 className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
               />
               {infoErrors.name && (
@@ -230,7 +244,7 @@ export function SeasonWizard({
                 inputMode="numeric"
                 value={infoDraft.year}
                 onChange={(event) => onInfoChange("year", event.target.value)}
-                disabled={isLocked}
+                disabled={!canEditSeasonInfo}
                 className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
               />
               {infoErrors.year && (
@@ -245,7 +259,7 @@ export function SeasonWizard({
                 inputMode="decimal"
                 value={infoDraft.entryFee}
                 onChange={(event) => onInfoChange("entryFee", event.target.value)}
-                disabled={isLocked}
+                disabled={!canEditSeasonInfo}
                 className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
               />
               {infoErrors.entryFee && (
@@ -255,14 +269,14 @@ export function SeasonWizard({
           </div>
 
           <div className="flex items-center gap-2">
-            {!isLocked && (
+            {canEditSeasonInfo && (
               <Button type="button" size="sm" onClick={onSaveInfo}>
                 Save Season Info
               </Button>
             )}
-            {isLocked && (
+            {!canEditSeasonInfo && (
               <span className="text-xs font-semibold text-[var(--color-neutral-600)]">
-                Locked: only draft seasons can be edited.
+                Locked: season info can be edited only in draft.
               </span>
             )}
             {infoMessage && <span className="text-xs text-[var(--color-neutral-600)]">{infoMessage}</span>}
@@ -278,7 +292,7 @@ export function SeasonWizard({
               <input
                 value={raceNameDraft}
                 onChange={(event) => onRaceNameChange(event.target.value)}
-                disabled={isLocked}
+                disabled={!canEditCalendar}
                 placeholder="Bhrain GP"
                 className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
               />
@@ -289,12 +303,12 @@ export function SeasonWizard({
                 type="date"
                 value={raceDateDraft}
                 onChange={(event) => onRaceDateChange(event.target.value)}
-                disabled={isLocked}
+                disabled={!canEditCalendar}
                 className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
               />
             </label>
 
-            {!isLocked && (
+            {canEditCalendar && (
               <div className="self-end">
                 <Button type="button" size="sm" onClick={onAddRace}>
                   Add Race
@@ -303,9 +317,9 @@ export function SeasonWizard({
             )}
           </div>
 
-          {isLocked && (
+          {!canEditCalendar && (
             <div className="text-xs font-semibold text-[var(--color-neutral-600)]">
-              Locked: only draft seasons can be edited.
+              Locked: calendar can be edited only in draft or active override.
             </div>
           )}
 
@@ -320,9 +334,61 @@ export function SeasonWizard({
               season.races.map((race, index) => (
                 <div
                   key={race.id}
-                  className="rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-800)]"
+                  className="flex flex-col gap-2 rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-800)] md:flex-row md:items-center md:justify-between"
                 >
-                  {index + 1}. {race.name} ({race.date || "TBD"})
+                  <div className="font-medium">
+                    {index + 1}. {race.name}
+                    {race.locked && season.status === "active" ? " (Locked)" : ""}
+                  </div>
+                  {!canEditCalendar ? (
+                    <div className="text-xs text-[var(--color-neutral-600)]">{race.date || "TBD"}</div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={race.date}
+                        onChange={(event) => onUpdateRaceDate(race.id, event.target.value)}
+                        disabled={season.status === "active" && race.locked}
+                        className="rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onMoveRace(race.id, "up")}
+                        disabled={
+                          index === 0 ||
+                          (season.status === "active" &&
+                            (race.locked || season.races[index - 1]?.locked))
+                        }
+                      >
+                        Up
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onMoveRace(race.id, "down")}
+                        disabled={
+                          index === season.races.length - 1 ||
+                          (season.status === "active" &&
+                            (race.locked || season.races[index + 1]?.locked))
+                        }
+                      >
+                        Down
+                      </Button>
+                      {season.status === "active" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={race.locked ? "solid" : "outline"}
+                          onClick={() => onToggleRaceLock(race.id)}
+                        >
+                          {race.locked ? "Locked" : "Lock"}
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -340,22 +406,22 @@ export function SeasonWizard({
               <input
                 value={teamNameDraft}
                 onChange={(event) => onTeamNameChange(event.target.value)}
-                disabled={isLocked}
+                disabled={!canEditTeams}
                 placeholder="Ferrari"
                 className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
               />
             </label>
 
-            {!isLocked && (
+            {canEditTeams && (
               <Button type="button" size="sm" onClick={onAddTeam}>
                 Add Team
               </Button>
             )}
           </div>
 
-          {isLocked && (
+          {!canEditTeams && (
             <div className="text-xs font-semibold text-[var(--color-neutral-600)]">
-              Locked: only draft seasons can be edited.
+              Locked: teams can be edited only in draft.
             </div>
           )}
 
@@ -390,7 +456,7 @@ export function SeasonWizard({
               <input
                 value={pilotNameDraft}
                 onChange={(event) => onPilotNameChange(event.target.value)}
-                disabled={isLocked}
+                disabled={!canEditPilots}
                 placeholder="Max Verstappen"
                 className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
               />
@@ -401,7 +467,7 @@ export function SeasonWizard({
               <select
                 value={pilotTeamIdDraft}
                 onChange={(event) => onPilotTeamIdChange(event.target.value)}
-                disabled={isLocked || season.teams.length === 0}
+                disabled={!canEditPilots || season.teams.length === 0}
                 className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
               >
                 {season.teams.length === 0 ? (
@@ -424,7 +490,7 @@ export function SeasonWizard({
               <select
                 value={pilotValueGroupDraft}
                 onChange={(event) => onPilotValueGroupChange(event.target.value as PilotValueGroup)}
-                disabled={isLocked}
+                disabled={!canEditPilots || season.status !== "draft"}
                 className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
               >
                 {availableValueGroups.map((group) => (
@@ -439,7 +505,7 @@ export function SeasonWizard({
               </select>
             </label>
 
-            {!isLocked && (
+            {canEditPilots && (
               <div className="self-end">
                 <Button type="button" size="sm" onClick={onAddPilot}>
                   Add Pilot
@@ -448,9 +514,9 @@ export function SeasonWizard({
             )}
           </div>
 
-          {isLocked && (
+          {!canEditPilots && (
             <div className="text-xs font-semibold text-[var(--color-neutral-600)]">
-              Locked: only draft seasons can be edited.
+              Locked: pilots can be edited only in draft or active override.
             </div>
           )}
           {pilotMessage && <div className="text-xs text-[var(--color-neutral-600)]">{pilotMessage}</div>}
@@ -464,7 +530,7 @@ export function SeasonWizard({
             <input
               type="file"
               accept=".xlsx,.xls,.csv"
-              disabled={isLocked}
+              disabled={!canEditPilots}
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) {
@@ -507,7 +573,7 @@ export function SeasonWizard({
                   type="number"
                   value={draftPilotCountDraft}
                   onChange={(event) => onDraftPilotCountChange(event.target.value)}
-                  disabled={isLocked}
+                  disabled={!canEditDraftRules}
                   className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
                 />
               </label>
@@ -517,11 +583,11 @@ export function SeasonWizard({
                   type="number"
                   value={valueGroupCountDraft}
                   onChange={(event) => onValueGroupCountChange(event.target.value)}
-                  disabled={isLocked}
+                  disabled={!canEditDraftRules}
                   className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
                 />
               </label>
-              {!isLocked && (
+              {canEditDraftRules && (
                 <div className="self-end">
                   <Button type="button" size="sm" onClick={onSaveDraftConfig}>
                     Save Rules
@@ -539,7 +605,7 @@ export function SeasonWizard({
                     type="number"
                     value={groupLimitDrafts[group]}
                     onChange={(event) => onGroupLimitChange(group, event.target.value)}
-                    disabled={isLocked || !draftRuleGroups.includes(group)}
+                    disabled={!canEditDraftRules || !draftRuleGroups.includes(group)}
                     className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
                   />
                 </label>
@@ -592,7 +658,7 @@ export function SeasonWizard({
                             onChange={(event) =>
                               onPilotGroupChange(team.id, pilot.id, event.target.value as PilotGroup)
                             }
-                            disabled={isLocked}
+                            disabled={!canEditPilots || season.status !== "draft"}
                             className="rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
                           >
                             <option value="unassigned">Unassigned</option>
@@ -615,7 +681,8 @@ export function SeasonWizard({
                             variant={pilot.selectedForDraft ? "solid" : "outline"}
                             onClick={() => onTogglePilotDraftSelection(team.id, pilot.id)}
                             disabled={
-                              isLocked ||
+                              !canEditPilots ||
+                              season.status !== "draft" ||
                               pilot.valueGroup === "unassigned" ||
                               (!pilot.selectedForDraft && selectedPilots.length >= draftPilotCount) ||
                               (!pilot.selectedForDraft &&

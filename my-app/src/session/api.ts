@@ -1,4 +1,4 @@
-import type { Pilot, PilotGroup, PilotValueGroup, Race, Season, Team } from "../seasons/types";
+import type { Pilot, PilotGroup, PilotValueGroup, Race, RaceScore, Season, Team } from "../seasons/types";
 import type { SessionData } from "./types";
 
 const SEASONS_STORAGE_KEY = "f1league.seasons";
@@ -28,8 +28,10 @@ const defaultSeasons: Season[] = [
       groupLimits: createDefaultGroupLimits(DEFAULT_DRAFT_PILOT_COUNT),
     },
     races: [],
+    raceScores: [],
     teams: [],
     status: "draft",
+    adminOverrides: { editingEnabled: false },
   },
   {
     id: "f1-2025",
@@ -42,8 +44,10 @@ const defaultSeasons: Season[] = [
       groupLimits: createDefaultGroupLimits(DEFAULT_DRAFT_PILOT_COUNT),
     },
     races: [],
+    raceScores: [],
     teams: [],
     status: "active",
+    adminOverrides: { editingEnabled: false },
   },
   {
     id: "f1-2024",
@@ -56,8 +60,10 @@ const defaultSeasons: Season[] = [
       groupLimits: createDefaultGroupLimits(DEFAULT_DRAFT_PILOT_COUNT),
     },
     races: [],
+    raceScores: [],
     teams: [],
     status: "completed",
+    adminOverrides: { editingEnabled: false },
   },
 ];
 
@@ -81,7 +87,10 @@ function isSeason(value: unknown): value is Season {
     typeof candidate.draftConfig === "object" &&
     candidate.draftConfig !== null &&
     Array.isArray(candidate.races) &&
+    Array.isArray(candidate.raceScores) &&
     Array.isArray(candidate.teams) &&
+    typeof candidate.adminOverrides === "object" &&
+    candidate.adminOverrides !== null &&
     (candidate.status === "draft" || candidate.status === "active" || candidate.status === "completed")
   );
 }
@@ -107,6 +116,7 @@ function normalizePilot(value: unknown): Pilot | null {
 
   return {
     id: candidate.id,
+    slotId: typeof candidate.slotId === "string" ? candidate.slotId : candidate.id,
     name: candidate.name,
     valueGroup,
     selectedForDraft: typeof candidate.selectedForDraft === "boolean" ? candidate.selectedForDraft : false,
@@ -141,6 +151,7 @@ function normalizeSeason(value: unknown): Season | null {
 
   const candidate = value as Partial<Season> & {
     races?: unknown[];
+    raceScores?: unknown[];
     teams?: unknown[];
     draftConfig?: {
       valueGroupCount?: number;
@@ -172,6 +183,7 @@ function normalizeSeason(value: unknown): Season | null {
             id: candidateRace.id,
             name: candidateRace.name,
             date: typeof candidateRace.date === "string" ? candidateRace.date : "",
+            locked: typeof candidateRace.locked === "boolean" ? candidateRace.locked : false,
           } satisfies Race;
         })
         .filter((race): race is Race => race !== null)
@@ -179,6 +191,51 @@ function normalizeSeason(value: unknown): Season | null {
 
   const teams = Array.isArray(candidate.teams)
     ? candidate.teams.map(normalizeTeam).filter((team): team is Team => team !== null)
+    : [];
+
+  const raceScores = Array.isArray(candidate.raceScores)
+    ? candidate.raceScores
+        .map((value) => {
+          if (typeof value !== "object" || value === null) {
+            return null;
+          }
+          const candidateRaceScore = value as Partial<RaceScore> & { entries?: unknown[] };
+          if (typeof candidateRaceScore.raceId !== "string") {
+            return null;
+          }
+          const entries = Array.isArray(candidateRaceScore.entries)
+            ? candidateRaceScore.entries
+                .map((entry) => {
+                  if (typeof entry !== "object" || entry === null) {
+                    return null;
+                  }
+                  const candidateEntry = entry as Partial<RaceScore["entries"][number]>;
+                  if (
+                    typeof candidateEntry.slotId !== "string" ||
+                    typeof candidateEntry.pilotId !== "string" ||
+                    typeof candidateEntry.pilotName !== "string" ||
+                    typeof candidateEntry.teamId !== "string" ||
+                    typeof candidateEntry.teamName !== "string"
+                  ) {
+                    return null;
+                  }
+                  return {
+                    slotId: candidateEntry.slotId,
+                    pilotId: candidateEntry.pilotId,
+                    pilotName: candidateEntry.pilotName,
+                    teamId: candidateEntry.teamId,
+                    teamName: candidateEntry.teamName,
+                    points: typeof candidateEntry.points === "number" ? candidateEntry.points : 0,
+                  };
+                })
+                .filter((entry): entry is RaceScore["entries"][number] => entry !== null)
+            : [];
+          return {
+            raceId: candidateRaceScore.raceId,
+            entries,
+          } satisfies RaceScore;
+        })
+        .filter((raceScore): raceScore is RaceScore => raceScore !== null)
     : [];
 
   const valueGroupCount =
@@ -225,7 +282,11 @@ function normalizeSeason(value: unknown): Season | null {
     },
     status: candidate.status,
     races,
+    raceScores,
     teams,
+    adminOverrides: {
+      editingEnabled: Boolean(candidate.adminOverrides?.editingEnabled),
+    },
   };
 }
 
@@ -289,8 +350,10 @@ export function createDraftSeason(payload: CreateDraftSeasonPayload): { success:
       groupLimits: createDefaultGroupLimits(DEFAULT_DRAFT_PILOT_COUNT),
     },
     races: [],
+    raceScores: [],
     teams: [],
     status: "draft",
+    adminOverrides: { editingEnabled: false },
   };
 
   const nextSeasons = [nextSeason, ...seasons];
@@ -353,7 +416,11 @@ export function updateDraftSeasonInfo(
 }
 
 export type UpdateSeasonPatch = Partial<
-  Pick<Season, "name" | "year" | "entryFee" | "status" | "draftConfig" | "races" | "teams">
+  Pick<
+    Season,
+    "name" | "year" | "entryFee" | "status" | "draftConfig" | "races" | "teams" | "adminOverrides"
+      | "raceScores"
+  >
 >;
 
 export function getSeasons() {

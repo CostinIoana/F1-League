@@ -112,6 +112,10 @@ export function AdminSeasonPage() {
   });
   const [draftConfigMessage, setDraftConfigMessage] = useState<string | null>(null);
   const [activationMessage, setActivationMessage] = useState<string | null>(null);
+  const [exceptionSourcePilotId, setExceptionSourcePilotId] = useState("");
+  const [exceptionTargetPilotId, setExceptionTargetPilotId] = useState("");
+  const [exceptionReplacementName, setExceptionReplacementName] = useState("");
+  const [exceptionMessage, setExceptionMessage] = useState<string | null>(null);
   const [seasonActionMessage, setSeasonActionMessage] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ seasonId: string; step: 1 | 2 } | null>(null);
 
@@ -141,8 +145,10 @@ export function AdminSeasonPage() {
         groupLimits: { A: 9, B: 9, C: 9, D: 9, E: 9 },
       },
       races: [],
+      raceScores: [],
       teams: [],
       status: "draft",
+      adminOverrides: { editingEnabled: false },
     };
 
     const result = createDraftSeason(nextSeason);
@@ -186,6 +192,11 @@ export function AdminSeasonPage() {
     });
     setDraftConfigMessage(null);
     setActivationMessage(null);
+    const allPilots = season.teams.flatMap((team) => team.pilots);
+    setExceptionSourcePilotId(allPilots[0]?.id ?? "");
+    setExceptionTargetPilotId(allPilots[1]?.id ?? allPilots[0]?.id ?? "");
+    setExceptionReplacementName("");
+    setExceptionMessage(null);
   };
 
   const handleCloseWizard = () => {
@@ -208,6 +219,10 @@ export function AdminSeasonPage() {
     setGroupLimitDrafts({ A: "", B: "", C: "", D: "", E: "" });
     setDraftConfigMessage(null);
     setActivationMessage(null);
+    setExceptionSourcePilotId("");
+    setExceptionTargetPilotId("");
+    setExceptionReplacementName("");
+    setExceptionMessage(null);
     setPendingDelete(null);
   };
 
@@ -251,7 +266,14 @@ export function AdminSeasonPage() {
   };
 
   const activeWizardSeason = wizardSeasonId ? getSeasonById(wizardSeasonId) : null;
-  const wizardIsLocked = activeWizardSeason ? activeWizardSeason.status !== "draft" : true;
+  const isDraftSeason = activeWizardSeason?.status === "draft";
+  const isActiveSeason = activeWizardSeason?.status === "active";
+  const isActiveOverrideEnabled = Boolean(activeWizardSeason?.adminOverrides.editingEnabled);
+  const canEditSeasonInfo = Boolean(isDraftSeason);
+  const canEditCalendar = Boolean(isDraftSeason || (isActiveSeason && isActiveOverrideEnabled));
+  const canEditTeams = Boolean(isDraftSeason);
+  const canEditPilots = Boolean(isDraftSeason || (isActiveSeason && isActiveOverrideEnabled));
+  const canEditDraftRules = Boolean(isDraftSeason);
   const availableValueGroups = PILOT_VALUE_GROUPS.slice(
     0,
     activeWizardSeason?.draftConfig.valueGroupCount ?? 1
@@ -314,6 +336,17 @@ export function AdminSeasonPage() {
   const canActivateSeason = activationIssues.length === 0;
   const canDeactivateSeason = activeWizardSeason?.status === "active";
   const canRevertSeason = activeWizardSeason ? activeWizardSeason.status !== "draft" : false;
+  const activeSeasonPilots = activeWizardSeason
+    ? activeWizardSeason.teams.flatMap((team) =>
+        team.pilots.map((pilot) => ({
+          teamId: team.id,
+          teamName: team.name,
+          pilotId: pilot.id,
+          pilotName: pilot.name,
+          slotId: pilot.slotId,
+        }))
+      )
+    : [];
 
   const handleSeasonInfoChange = (field: keyof SeasonInfoDraft, value: string) => {
     setSeasonInfoDraft((current) => ({ ...current, [field]: value }));
@@ -351,14 +384,55 @@ export function AdminSeasonPage() {
     setPilotMessage(null);
   };
 
+  const handleExceptionSourcePilotChange = (pilotId: string) => {
+    setExceptionSourcePilotId(pilotId);
+    if (pilotId === exceptionTargetPilotId) {
+      const fallback = activeSeasonPilots.find((pilot) => pilot.pilotId !== pilotId);
+      setExceptionTargetPilotId(fallback?.pilotId ?? pilotId);
+    }
+    setExceptionMessage(null);
+  };
+
+  const handleExceptionTargetPilotChange = (pilotId: string) => {
+    setExceptionTargetPilotId(pilotId);
+    setExceptionMessage(null);
+  };
+
+  const handleExceptionReplacementNameChange = (value: string) => {
+    setExceptionReplacementName(value);
+    setExceptionMessage(null);
+  };
+
+  const handleToggleActiveEditingOverride = () => {
+    if (!activeWizardSeason || activeWizardSeason.status !== "active") {
+      setActivationMessage("Override is available only for active seasons.");
+      return;
+    }
+
+    const nextEnabled = !activeWizardSeason.adminOverrides.editingEnabled;
+    const result = updateSeason(activeWizardSeason.id, {
+      adminOverrides: { editingEnabled: nextEnabled },
+    });
+    if (!result.success) {
+      setActivationMessage(result.message ?? "Could not update editing override.");
+      return;
+    }
+
+    setActivationMessage(
+      nextEnabled
+        ? "Admin override enabled: calendar and pilots can be edited."
+        : "Admin override disabled: active season editing locked."
+    );
+  };
+
   const handlePilotGroupChange = (teamId: string, pilotId: string, valueGroup: PilotGroup) => {
     if (!activeWizardSeason) {
       setPilotMessage("Not found");
       return;
     }
 
-    if (wizardIsLocked) {
-      setPilotMessage("Locked: only draft seasons can be edited.");
+    if (!isDraftSeason) {
+      setPilotMessage("Value group can be edited only in draft.");
       return;
     }
 
@@ -423,8 +497,8 @@ export function AdminSeasonPage() {
       return;
     }
 
-    if (wizardIsLocked) {
-      setImportMessage("Locked: only draft seasons can be edited.");
+    if (!canEditPilots) {
+      setImportMessage("Locked: pilots can be edited only in draft or active override.");
       return;
     }
 
@@ -495,8 +569,10 @@ export function AdminSeasonPage() {
           continue;
         }
 
+        const pilotId = createPilotId(row.pilotName, new Set(team.pilots.map((pilot) => pilot.id)));
         team.pilots.push({
-          id: createPilotId(row.pilotName, new Set(team.pilots.map((pilot) => pilot.id))),
+          id: pilotId,
+          slotId: pilotId,
           name: row.pilotName,
           valueGroup: "unassigned",
           selectedForDraft: false,
@@ -543,8 +619,8 @@ export function AdminSeasonPage() {
       return;
     }
 
-    if (wizardIsLocked) {
-      setRaceMessage("Locked: only draft seasons can be edited.");
+    if (!canEditCalendar) {
+      setRaceMessage("Locked: calendar can be edited only in draft or active override.");
       return;
     }
 
@@ -575,6 +651,7 @@ export function AdminSeasonPage() {
         id: createRaceId(trimmedName, new Set(activeWizardSeason.races.map((race) => race.id))),
         name: trimmedName,
         date: raceDateDraft,
+        locked: false,
       },
     ];
 
@@ -589,14 +666,138 @@ export function AdminSeasonPage() {
     setRaceMessage("Race added.");
   };
 
+  const handleUpdateRaceDate = (raceId: string, date: string) => {
+    if (!activeWizardSeason) {
+      setRaceMessage("Not found");
+      return;
+    }
+
+    if (!canEditCalendar) {
+      setRaceMessage("Locked: calendar can be edited only in draft or active override.");
+      return;
+    }
+
+    if (!date) {
+      setRaceMessage("Race date is required.");
+      return;
+    }
+
+    const targetRace = activeWizardSeason.races.find((race) => race.id === raceId);
+    if (!targetRace) {
+      setRaceMessage("Race not found.");
+      return;
+    }
+    if (activeWizardSeason.status === "active" && targetRace.locked) {
+      setRaceMessage("Race is locked and cannot be edited in active season.");
+      return;
+    }
+
+    const hasDuplicate = activeWizardSeason.races.some(
+      (race) =>
+        race.id !== raceId &&
+        race.name.toLowerCase() === targetRace.name.toLowerCase() &&
+        race.date === date
+    );
+    if (hasDuplicate) {
+      setRaceMessage("Race already exists in this season.");
+      return;
+    }
+
+    const nextRaces = activeWizardSeason.races.map((race) =>
+      race.id === raceId ? { ...race, date } : race
+    );
+
+    const result = updateSeason(activeWizardSeason.id, { races: nextRaces });
+    if (!result.success) {
+      setRaceMessage(result.message ?? "Could not update race date.");
+      return;
+    }
+
+    setRaceMessage("Race date updated.");
+  };
+
+  const handleMoveRace = (raceId: string, direction: "up" | "down") => {
+    if (!activeWizardSeason) {
+      setRaceMessage("Not found");
+      return;
+    }
+
+    if (!canEditCalendar) {
+      setRaceMessage("Locked: calendar can be edited only in draft or active override.");
+      return;
+    }
+
+    const currentIndex = activeWizardSeason.races.findIndex((race) => race.id === raceId);
+    if (currentIndex === -1) {
+      setRaceMessage("Race not found.");
+      return;
+    }
+
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= activeWizardSeason.races.length) {
+      return;
+    }
+    if (
+      activeWizardSeason.status === "active" &&
+      (activeWizardSeason.races[currentIndex].locked || activeWizardSeason.races[targetIndex].locked)
+    ) {
+      setRaceMessage("Cannot move locked races in active season.");
+      return;
+    }
+
+    const nextRaces = [...activeWizardSeason.races];
+    const [movedRace] = nextRaces.splice(currentIndex, 1);
+    nextRaces.splice(targetIndex, 0, movedRace);
+
+    const result = updateSeason(activeWizardSeason.id, { races: nextRaces });
+    if (!result.success) {
+      setRaceMessage(result.message ?? "Could not update race order.");
+      return;
+    }
+
+    setRaceMessage("Race order updated.");
+  };
+
+  const handleToggleRaceLock = (raceId: string) => {
+    if (!activeWizardSeason) {
+      setRaceMessage("Not found");
+      return;
+    }
+    if (activeWizardSeason.status !== "active") {
+      setRaceMessage("Race lock can be changed only in active season.");
+      return;
+    }
+    if (!activeWizardSeason.adminOverrides.editingEnabled) {
+      setRaceMessage("Enable admin override to change race lock.");
+      return;
+    }
+
+    const targetRace = activeWizardSeason.races.find((race) => race.id === raceId);
+    if (!targetRace) {
+      setRaceMessage("Race not found.");
+      return;
+    }
+
+    const nextRaces = activeWizardSeason.races.map((race) =>
+      race.id === raceId ? { ...race, locked: !race.locked } : race
+    );
+    const result = updateSeason(activeWizardSeason.id, { races: nextRaces });
+    if (!result.success) {
+      setRaceMessage(result.message ?? "Could not update race lock.");
+      return;
+    }
+
+    setRaceMessage(targetRace.locked ? "Race unlocked." : "Race locked.");
+  };
+
   const handleAddTeam = () => {
     if (!activeWizardSeason) {
       setTeamMessage("Not found");
       return;
     }
 
-    if (wizardIsLocked) {
-      setTeamMessage("Locked: only draft seasons can be edited.");
+    if (!canEditTeams) {
+      setTeamMessage("Locked: teams can be edited only in draft.");
       return;
     }
 
@@ -643,8 +844,8 @@ export function AdminSeasonPage() {
       return;
     }
 
-    if (wizardIsLocked) {
-      setPilotMessage("Locked: only draft seasons can be edited.");
+    if (!canEditPilots) {
+      setPilotMessage("Locked: pilots can be edited only in draft or active override.");
       return;
     }
 
@@ -695,8 +896,10 @@ export function AdminSeasonPage() {
       return;
     }
 
+    const nextPilotId = createPilotId(trimmedName, new Set(selectedTeam.pilots.map((pilot) => pilot.id)));
     const nextPilot = {
-      id: createPilotId(trimmedName, new Set(selectedTeam.pilots.map((pilot) => pilot.id))),
+      id: nextPilotId,
+      slotId: nextPilotId,
       name: trimmedName,
       valueGroup: pilotValueGroupDraft,
       selectedForDraft: false,
@@ -722,8 +925,8 @@ export function AdminSeasonPage() {
       return;
     }
 
-    if (wizardIsLocked) {
-      setPilotMessage("Locked: only draft seasons can be edited.");
+    if (!isDraftSeason) {
+      setPilotMessage("Draft selection can be edited only in draft.");
       return;
     }
 
@@ -808,14 +1011,157 @@ export function AdminSeasonPage() {
     setPilotMessage("Draft selection updated.");
   };
 
+  const handleExceptionalReplacePilot = () => {
+    if (!activeWizardSeason) {
+      setExceptionMessage("Season not found.");
+      return;
+    }
+    if (!(activeWizardSeason.status === "active" && activeWizardSeason.adminOverrides.editingEnabled)) {
+      setExceptionMessage("Exceptional changes are allowed only in active season with admin override.");
+      return;
+    }
+
+    const trimmedName = exceptionReplacementName.trim();
+    if (trimmedName.length < 2) {
+      setExceptionMessage("Replacement pilot name must have at least 2 characters.");
+      return;
+    }
+
+    let sourceTeamIndex = -1;
+    let sourcePilotIndex = -1;
+    activeWizardSeason.teams.forEach((team, teamIndex) => {
+      team.pilots.forEach((pilot, pilotIndex) => {
+        if (pilot.id === exceptionSourcePilotId) {
+          sourceTeamIndex = teamIndex;
+          sourcePilotIndex = pilotIndex;
+        }
+      });
+    });
+
+    if (sourceTeamIndex === -1 || sourcePilotIndex === -1) {
+      setExceptionMessage("Source pilot not found.");
+      return;
+    }
+
+    const sourceTeam = activeWizardSeason.teams[sourceTeamIndex];
+    const sourcePilot = sourceTeam.pilots[sourcePilotIndex];
+    const nextPilotId = createPilotId(trimmedName, new Set(sourceTeam.pilots.map((pilot) => pilot.id)));
+
+    const replacementPilot = {
+      id: nextPilotId,
+      slotId: sourcePilot.slotId,
+      name: trimmedName,
+      valueGroup: sourcePilot.valueGroup,
+      selectedForDraft: sourcePilot.selectedForDraft,
+    };
+
+    const nextTeams = activeWizardSeason.teams.map((team, teamIndex) => {
+      if (teamIndex !== sourceTeamIndex) {
+        return team;
+      }
+      return {
+        ...team,
+        pilots: team.pilots.map((pilot, pilotIndex) =>
+          pilotIndex === sourcePilotIndex ? replacementPilot : pilot
+        ),
+      };
+    });
+
+    const result = updateSeason(activeWizardSeason.id, { teams: nextTeams });
+    if (!result.success) {
+      setExceptionMessage(result.message ?? "Could not replace pilot.");
+      return;
+    }
+
+    setExceptionSourcePilotId(replacementPilot.id);
+    setExceptionReplacementName("");
+    setExceptionMessage("Exceptional replacement saved. Slot points remain on the same draft slot.");
+  };
+
+  const handleExceptionalTransferSwap = () => {
+    if (!activeWizardSeason) {
+      setExceptionMessage("Season not found.");
+      return;
+    }
+    if (!(activeWizardSeason.status === "active" && activeWizardSeason.adminOverrides.editingEnabled)) {
+      setExceptionMessage("Exceptional changes are allowed only in active season with admin override.");
+      return;
+    }
+    if (!exceptionSourcePilotId || !exceptionTargetPilotId) {
+      setExceptionMessage("Select both source and target pilots.");
+      return;
+    }
+    if (exceptionSourcePilotId === exceptionTargetPilotId) {
+      setExceptionMessage("Source and target must be different pilots.");
+      return;
+    }
+
+    let sourceTeamIndex = -1;
+    let sourcePilotIndex = -1;
+    let targetTeamIndex = -1;
+    let targetPilotIndex = -1;
+
+    activeWizardSeason.teams.forEach((team, teamIndex) => {
+      team.pilots.forEach((pilot, pilotIndex) => {
+        if (pilot.id === exceptionSourcePilotId) {
+          sourceTeamIndex = teamIndex;
+          sourcePilotIndex = pilotIndex;
+        }
+        if (pilot.id === exceptionTargetPilotId) {
+          targetTeamIndex = teamIndex;
+          targetPilotIndex = pilotIndex;
+        }
+      });
+    });
+
+    if (sourceTeamIndex === -1 || sourcePilotIndex === -1 || targetTeamIndex === -1 || targetPilotIndex === -1) {
+      setExceptionMessage("Could not resolve selected pilots.");
+      return;
+    }
+
+    const sourcePilot = activeWizardSeason.teams[sourceTeamIndex].pilots[sourcePilotIndex];
+    const targetPilot = activeWizardSeason.teams[targetTeamIndex].pilots[targetPilotIndex];
+
+    const nextSourcePilot = { ...targetPilot, slotId: sourcePilot.slotId };
+    const nextTargetPilot = { ...sourcePilot, slotId: targetPilot.slotId };
+
+    const nextTeams = activeWizardSeason.teams.map((team, teamIndex) => {
+      if (teamIndex !== sourceTeamIndex && teamIndex !== targetTeamIndex) {
+        return team;
+      }
+      return {
+        ...team,
+        pilots: team.pilots.map((pilot, pilotIndex) => {
+          if (teamIndex === sourceTeamIndex && pilotIndex === sourcePilotIndex) {
+            return nextSourcePilot;
+          }
+          if (teamIndex === targetTeamIndex && pilotIndex === targetPilotIndex) {
+            return nextTargetPilot;
+          }
+          return pilot;
+        }),
+      };
+    });
+
+    const result = updateSeason(activeWizardSeason.id, { teams: nextTeams });
+    if (!result.success) {
+      setExceptionMessage(result.message ?? "Could not process transfer.");
+      return;
+    }
+
+    setExceptionSourcePilotId(nextTargetPilot.id);
+    setExceptionTargetPilotId(nextSourcePilot.id);
+    setExceptionMessage("Exceptional transfer saved. Draft slot points stay attached to their slots.");
+  };
+
   const handleSaveDraftConfig = () => {
     if (!activeWizardSeason) {
       setDraftConfigMessage("Not found");
       return;
     }
 
-    if (wizardIsLocked) {
-      setDraftConfigMessage("Locked: only draft seasons can be edited.");
+    if (!canEditDraftRules) {
+      setDraftConfigMessage("Locked: draft rules can be edited only in draft.");
       return;
     }
 
@@ -981,7 +1327,10 @@ export function AdminSeasonPage() {
       }
     }
 
-    const activateResult = updateSeason(activeWizardSeason.id, { status: "active" });
+    const activateResult = updateSeason(activeWizardSeason.id, {
+      status: "active",
+      adminOverrides: { editingEnabled: false },
+    });
     if (!activateResult.success) {
       setActivationMessage(activateResult.message ?? "Could not activate season.");
       return;
@@ -1033,7 +1382,10 @@ export function AdminSeasonPage() {
       return;
     }
 
-    const result = updateSeason(activeWizardSeason.id, { status: "draft" });
+    const result = updateSeason(activeWizardSeason.id, {
+      status: "draft",
+      adminOverrides: { editingEnabled: false },
+    });
     if (!result.success) {
       setActivationMessage(result.message ?? "Could not revert season.");
       return;
@@ -1048,8 +1400,8 @@ export function AdminSeasonPage() {
       return false;
     }
 
-    if (wizardIsLocked) {
-      setSeasonInfoMessage("Locked: only draft seasons can be edited.");
+    if (!canEditSeasonInfo) {
+      setSeasonInfoMessage("Locked: season info can be edited only in draft.");
       return true;
     }
 
@@ -1164,13 +1516,40 @@ export function AdminSeasonPage() {
         </Surface>
       )}
 
+      {activeWizardSeason?.status === "active" && (
+        <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-sm font-semibold text-[var(--color-neutral-900)]">
+                Admin Override
+              </div>
+              <div className="text-xs text-[var(--color-neutral-600)]">
+                Active season remains active. Override unlocks only calendar and pilot edits.
+              </div>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant={isActiveOverrideEnabled ? "solid" : "outline"}
+              onClick={handleToggleActiveEditingOverride}
+            >
+              {isActiveOverrideEnabled ? "Editing Enabled" : "Editing Disabled"}
+            </Button>
+          </div>
+        </Surface>
+      )}
+
       {activeWizardSeason && (
         <SeasonWizard
           season={activeWizardSeason}
           currentStep={wizardStep}
           infoDraft={seasonInfoDraft}
           infoErrors={seasonInfoErrors}
-          isLocked={wizardIsLocked}
+          canEditSeasonInfo={canEditSeasonInfo}
+          canEditCalendar={canEditCalendar}
+          canEditTeams={canEditTeams}
+          canEditPilots={canEditPilots}
+          canEditDraftRules={canEditDraftRules}
           infoMessage={seasonInfoMessage}
           raceNameDraft={raceNameDraft}
           raceDateDraft={raceDateDraft}
@@ -1202,6 +1581,9 @@ export function AdminSeasonPage() {
           onRaceNameChange={handleRaceNameChange}
           onRaceDateChange={handleRaceDateChange}
           onAddRace={handleAddRace}
+          onUpdateRaceDate={handleUpdateRaceDate}
+          onMoveRace={handleMoveRace}
+          onToggleRaceLock={handleToggleRaceLock}
           onTeamNameChange={handleTeamNameChange}
           onAddTeam={handleAddTeam}
           onPilotNameChange={handlePilotNameChange}
@@ -1219,6 +1601,100 @@ export function AdminSeasonPage() {
           onDeactivateSeason={handleDeactivateSeason}
           onRevertSeason={handleRevertSeason}
         />
+      )}
+
+      {activeWizardSeason?.status === "active" && (
+        <Surface tone="subtle" className="space-y-3 border-[var(--color-neutral-300)]">
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--color-neutral-900)]">
+              Exceptional Pilot Changes (Active Season)
+            </h3>
+            <p className="text-xs text-[var(--color-neutral-600)]">
+              Slot points remain attached to draft slots, not to pilot identities.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] p-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-[var(--color-neutral-600)]">
+              Replacement (Pilot leaves team)
+            </div>
+            <div className="mt-2 grid gap-2 md:grid-cols-[1fr_1fr_auto]">
+              <label className="space-y-1">
+                <span className="text-xs font-semibold text-[var(--color-neutral-700)]">Slot Pilot</span>
+                <select
+                  value={exceptionSourcePilotId}
+                  onChange={(event) => handleExceptionSourcePilotChange(event.target.value)}
+                  className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
+                >
+                  {activeSeasonPilots.map((pilot) => (
+                    <option key={pilot.pilotId} value={pilot.pilotId}>
+                      {pilot.teamName} | {pilot.pilotName} | slot {pilot.slotId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-semibold text-[var(--color-neutral-700)]">Replacement Name</span>
+                <input
+                  value={exceptionReplacementName}
+                  onChange={(event) => handleExceptionReplacementNameChange(event.target.value)}
+                  placeholder="New pilot"
+                  className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
+                />
+              </label>
+              <div className="self-end">
+                <Button type="button" size="sm" onClick={handleExceptionalReplacePilot}>
+                  Replace In Slot
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] p-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-[var(--color-neutral-600)]">
+              Transfer (Pilot moves to another slot)
+            </div>
+            <div className="mt-2 grid gap-2 md:grid-cols-[1fr_1fr_auto]">
+              <label className="space-y-1">
+                <span className="text-xs font-semibold text-[var(--color-neutral-700)]">Source Pilot</span>
+                <select
+                  value={exceptionSourcePilotId}
+                  onChange={(event) => handleExceptionSourcePilotChange(event.target.value)}
+                  className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
+                >
+                  {activeSeasonPilots.map((pilot) => (
+                    <option key={`source-${pilot.pilotId}`} value={pilot.pilotId}>
+                      {pilot.teamName} | {pilot.pilotName} | slot {pilot.slotId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-semibold text-[var(--color-neutral-700)]">Target Slot Pilot</span>
+                <select
+                  value={exceptionTargetPilotId}
+                  onChange={(event) => handleExceptionTargetPilotChange(event.target.value)}
+                  className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
+                >
+                  {activeSeasonPilots
+                    .filter((pilot) => pilot.pilotId !== exceptionSourcePilotId)
+                    .map((pilot) => (
+                      <option key={`target-${pilot.pilotId}`} value={pilot.pilotId}>
+                        {pilot.teamName} | {pilot.pilotName} | slot {pilot.slotId}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <div className="self-end">
+                <Button type="button" size="sm" variant="outline" onClick={handleExceptionalTransferSwap}>
+                  Transfer By Slot Swap
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {exceptionMessage && <div className="text-xs text-[var(--color-neutral-600)]">{exceptionMessage}</div>}
+        </Surface>
       )}
 
       <NewDraftSeasonForm onCreateDraft={handleCreateDraft} />

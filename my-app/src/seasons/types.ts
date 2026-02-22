@@ -4,6 +4,21 @@ export type Race = {
   id: string;
   name: string;
   date: string;
+  locked: boolean;
+};
+
+export type RaceScoreEntry = {
+  slotId: string;
+  pilotId: string;
+  pilotName: string;
+  teamId: string;
+  teamName: string;
+  points: number;
+};
+
+export type RaceScore = {
+  raceId: string;
+  entries: RaceScoreEntry[];
 };
 
 export type PilotValueGroup = "A" | "B" | "C" | "D" | "E";
@@ -13,6 +28,7 @@ export const PILOT_VALUE_GROUPS: PilotValueGroup[] = ["A", "B", "C", "D", "E"];
 
 export type Pilot = {
   id: string;
+  slotId: string;
   name: string;
   valueGroup: PilotGroup;
   selectedForDraft: boolean;
@@ -37,6 +53,10 @@ export type Season = {
   entryFee: number;
   draftConfig: DraftConfig;
   races: Race[];
+  raceScores: RaceScore[];
   teams: Team[];
   status: SeasonStatus;
+  adminOverrides: {
+    editingEnabled: boolean;
+  };
 };
