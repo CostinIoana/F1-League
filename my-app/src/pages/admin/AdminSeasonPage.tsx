@@ -468,25 +468,6 @@ export function AdminSeasonPage() {
       return;
     }
 
-    if (valueGroup !== "unassigned") {
-      const pilotsByGroup = activeWizardSeason.teams.reduce(
-        (counts, team) => {
-          team.pilots.forEach((pilot) => {
-            if (pilot.valueGroup !== "unassigned" && !(team.id === teamId && pilot.id === pilotId)) {
-              counts[pilot.valueGroup] += 1;
-            }
-          });
-          return counts;
-        },
-        { A: 0, B: 0, C: 0, D: 0, E: 0 } as Record<PilotValueGroup, number>
-      );
-
-      if (pilotsByGroup[valueGroup] >= activeWizardSeason.draftConfig.groupLimits[valueGroup]) {
-        setPilotMessage(`Group ${valueGroup} limit reached by current rules.`);
-        return;
-      }
-    }
-
     const nextTeams = activeWizardSeason.teams.map((team) => {
       if (team.id !== teamId) {
         return team;
@@ -896,22 +877,6 @@ export function AdminSeasonPage() {
 
     if (!availableValueGroups.includes(pilotValueGroupDraft)) {
       setPilotMessage("Selected value group is not allowed by season configuration.");
-      return;
-    }
-
-    const pilotsByGroup = activeWizardSeason.teams.reduce(
-      (counts, team) => {
-        team.pilots.forEach((pilot) => {
-          if (pilot.valueGroup !== "unassigned") {
-            counts[pilot.valueGroup] += 1;
-          }
-        });
-        return counts;
-      },
-      { A: 0, B: 0, C: 0, D: 0, E: 0 } as Record<PilotValueGroup, number>
-    );
-    if (pilotsByGroup[pilotValueGroupDraft] >= activeWizardSeason.draftConfig.groupLimits[pilotValueGroupDraft]) {
-      setPilotMessage(`Group ${pilotValueGroupDraft} is full based on current rules.`);
       return;
     }
 
