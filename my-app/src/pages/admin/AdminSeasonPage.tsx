@@ -14,6 +14,8 @@ import { useSeasons } from "../../seasons/useSeasons";
 import { NewDraftSeasonForm, type NewDraftSeasonInput } from "./NewDraftSeasonForm";
 import { SeasonWizard, type SeasonInfoDraft, type SeasonInfoErrors } from "./SeasonWizard";
 
+type SeasonSetupSubmenu = "newDraft" | "completedSeasons";
+
 const statusLabelMap: Record<SeasonStatus, string> = {
   draft: "Draft",
   active: "Active",
@@ -82,6 +84,7 @@ function createPilotId(name: string, existingIds: Set<string>) {
 
 export function AdminSeasonPage() {
   const { seasons, getSeasonById, createDraftSeason, updateSeason, deleteSeason } = useSeasons();
+  const [seasonSetupSubmenu, setSeasonSetupSubmenu] = useState<SeasonSetupSubmenu>("newDraft");
   const [wizardSeasonId, setWizardSeasonId] = useState<string | null>(null);
   const [wizardStep, setWizardStep] = useState(1);
   const [seasonInfoDraft, setSeasonInfoDraft] = useState<SeasonInfoDraft>({
@@ -122,6 +125,10 @@ export function AdminSeasonPage() {
   const currencyFormatter = useMemo(
     () => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }),
     []
+  );
+  const completedSeasons = useMemo(
+    () => seasons.filter((season) => season.status === "completed"),
+    [seasons]
   );
 
   const handleCreateDraft = (payload: NewDraftSeasonInput) => {
@@ -1481,6 +1488,27 @@ export function AdminSeasonPage() {
         )}
       </header>
 
+      <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={seasonSetupSubmenu === "newDraft" ? "solid" : "outline"}
+            onClick={() => setSeasonSetupSubmenu("newDraft")}
+          >
+            New Draft Season
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={seasonSetupSubmenu === "completedSeasons" ? "solid" : "outline"}
+            onClick={() => setSeasonSetupSubmenu("completedSeasons")}
+          >
+            Completed Seasons
+          </Button>
+        </div>
+      </Surface>
+
       {pendingDelete && (
         <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
           <div className="text-sm font-semibold text-[var(--color-neutral-900)]">
@@ -1697,40 +1725,50 @@ export function AdminSeasonPage() {
         </Surface>
       )}
 
-      <NewDraftSeasonForm onCreateDraft={handleCreateDraft} />
-
-      <div className="space-y-3">
-        {seasons.map((season) => (
-          <Surface
-            key={season.id}
-            className="flex items-center justify-between gap-3 border-[var(--color-neutral-200)]"
-          >
-            <div>
-              <div className="text-sm font-semibold text-[var(--color-neutral-900)]">
-                {season.name} {season.year}
+      {seasonSetupSubmenu === "newDraft" ? (
+        <NewDraftSeasonForm onCreateDraft={handleCreateDraft} />
+      ) : (
+        <div className="space-y-3">
+          {completedSeasons.length === 0 ? (
+            <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
+              <div className="text-sm text-[var(--color-neutral-700)]">
+                No completed seasons yet.
               </div>
-              <div className="text-xs text-[var(--color-neutral-500)]">
-                Fee: {currencyFormatter.format(season.entryFee)} | Season ID: {season.id}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button type="button" size="sm" variant="outline" onClick={() => handleOpenWizard(season)}>
-                {season.status === "draft" ? "Edit" : "View"}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => handleDeleteSeason(season.id)}
+            </Surface>
+          ) : (
+            completedSeasons.map((season) => (
+              <Surface
+                key={season.id}
+                className="flex items-center justify-between gap-3 border-[var(--color-neutral-200)]"
               >
-                Delete
-              </Button>
-              <Badge tone={statusToneMap[season.status]}>{statusLabelMap[season.status]}</Badge>
-            </div>
-          </Surface>
-        ))}
-      </div>
+                <div>
+                  <div className="text-sm font-semibold text-[var(--color-neutral-900)]">
+                    {season.name} {season.year}
+                  </div>
+                  <div className="text-xs text-[var(--color-neutral-500)]">
+                    Fee: {currencyFormatter.format(season.entryFee)} | Season ID: {season.id}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button type="button" size="sm" variant="outline" onClick={() => handleOpenWizard(season)}>
+                    View
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleDeleteSeason(season.id)}
+                  >
+                    Delete
+                  </Button>
+                  <Badge tone={statusToneMap[season.status]}>{statusLabelMap[season.status]}</Badge>
+                </div>
+              </Surface>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
