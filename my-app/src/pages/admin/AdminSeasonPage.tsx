@@ -82,6 +82,17 @@ function createPilotId(name: string, existingIds: Set<string>) {
   return nextId;
 }
 
+function createSlotId(name: string, existingIds: Set<string>) {
+  const baseId = slugify(name);
+  let nextId = baseId || "slot";
+  let suffix = 2;
+  while (existingIds.has(nextId)) {
+    nextId = `${baseId || "slot"}-${suffix}`;
+    suffix += 1;
+  }
+  return nextId;
+}
+
 export function AdminSeasonPage() {
   const { seasons, getSeasonById, createDraftSeason, updateSeason, deleteSeason } = useSeasons();
   const [seasonSetupSubmenu, setSeasonSetupSubmenu] = useState<SeasonSetupSubmenu>("newDraft");
@@ -115,8 +126,8 @@ export function AdminSeasonPage() {
   });
   const [draftConfigMessage, setDraftConfigMessage] = useState<string | null>(null);
   const [activationMessage, setActivationMessage] = useState<string | null>(null);
-  const [exceptionSourcePilotId, setExceptionSourcePilotId] = useState("");
-  const [exceptionTargetPilotId, setExceptionTargetPilotId] = useState("");
+  const [exceptionSourceSlotId, setExceptionSourceSlotId] = useState("");
+  const [exceptionTargetSlotId, setExceptionTargetSlotId] = useState("");
   const [exceptionReplacementName, setExceptionReplacementName] = useState("");
   const [exceptionMessage, setExceptionMessage] = useState<string | null>(null);
   const [seasonActionMessage, setSeasonActionMessage] = useState<string | null>(null);
@@ -200,8 +211,8 @@ export function AdminSeasonPage() {
     setDraftConfigMessage(null);
     setActivationMessage(null);
     const allPilots = season.teams.flatMap((team) => team.pilots);
-    setExceptionSourcePilotId(allPilots[0]?.id ?? "");
-    setExceptionTargetPilotId(allPilots[1]?.id ?? allPilots[0]?.id ?? "");
+    setExceptionSourceSlotId(allPilots[0]?.slotId ?? "");
+    setExceptionTargetSlotId(allPilots[1]?.slotId ?? allPilots[0]?.slotId ?? "");
     setExceptionReplacementName("");
     setExceptionMessage(null);
   };
@@ -226,8 +237,8 @@ export function AdminSeasonPage() {
     setGroupLimitDrafts({ A: "", B: "", C: "", D: "", E: "" });
     setDraftConfigMessage(null);
     setActivationMessage(null);
-    setExceptionSourcePilotId("");
-    setExceptionTargetPilotId("");
+    setExceptionSourceSlotId("");
+    setExceptionTargetSlotId("");
     setExceptionReplacementName("");
     setExceptionMessage(null);
     setPendingDelete(null);
@@ -319,6 +330,11 @@ export function AdminSeasonPage() {
         `Select exactly ${effectiveDraftPilotLimit} pilots for draft.`
       );
     }
+    if (activeWizardSeason.draftConfig.draftPilotCount !== effectiveDraftPilotLimit) {
+      issues.push(
+        `Draft pilot count (${activeWizardSeason.draftConfig.draftPilotCount}) must equal active group limits total (${effectiveDraftPilotLimit}).`
+      );
+    }
 
     const selectedByGroup = selectedPilots.reduce(
       (counts, pilot) => {
@@ -348,7 +364,6 @@ export function AdminSeasonPage() {
         team.pilots.map((pilot) => ({
           teamId: team.id,
           teamName: team.name,
-          pilotId: pilot.id,
           pilotName: pilot.name,
           slotId: pilot.slotId,
         }))
@@ -391,17 +406,17 @@ export function AdminSeasonPage() {
     setPilotMessage(null);
   };
 
-  const handleExceptionSourcePilotChange = (pilotId: string) => {
-    setExceptionSourcePilotId(pilotId);
-    if (pilotId === exceptionTargetPilotId) {
-      const fallback = activeSeasonPilots.find((pilot) => pilot.pilotId !== pilotId);
-      setExceptionTargetPilotId(fallback?.pilotId ?? pilotId);
+  const handleExceptionSourcePilotChange = (slotId: string) => {
+    setExceptionSourceSlotId(slotId);
+    if (slotId === exceptionTargetSlotId) {
+      const fallback = activeSeasonPilots.find((pilot) => pilot.slotId !== slotId);
+      setExceptionTargetSlotId(fallback?.slotId ?? slotId);
     }
     setExceptionMessage(null);
   };
 
-  const handleExceptionTargetPilotChange = (pilotId: string) => {
-    setExceptionTargetPilotId(pilotId);
+  const handleExceptionTargetPilotChange = (slotId: string) => {
+    setExceptionTargetSlotId(slotId);
     setExceptionMessage(null);
   };
 
@@ -458,25 +473,6 @@ export function AdminSeasonPage() {
     if (targetPilot.selectedForDraft && valueGroup === "unassigned") {
       setPilotMessage("Unselect pilot from draft before setting group to unassigned.");
       return;
-    }
-
-    if (valueGroup !== "unassigned") {
-      const pilotsByGroup = activeWizardSeason.teams.reduce(
-        (counts, team) => {
-          team.pilots.forEach((pilot) => {
-            if (pilot.valueGroup !== "unassigned" && !(team.id === teamId && pilot.id === pilotId)) {
-              counts[pilot.valueGroup] += 1;
-            }
-          });
-          return counts;
-        },
-        { A: 0, B: 0, C: 0, D: 0, E: 0 } as Record<PilotValueGroup, number>
-      );
-
-      if (pilotsByGroup[valueGroup] >= activeWizardSeason.draftConfig.groupLimits[valueGroup]) {
-        setPilotMessage(`Group ${valueGroup} limit reached by current rules.`);
-        return;
-      }
     }
 
     const nextTeams = activeWizardSeason.teams.map((team) => {
@@ -577,9 +573,13 @@ export function AdminSeasonPage() {
         }
 
         const pilotId = createPilotId(row.pilotName, new Set(team.pilots.map((pilot) => pilot.id)));
+        const slotId = createSlotId(
+          row.pilotName,
+          new Set(nextTeams.flatMap((item) => item.pilots.map((pilot) => pilot.slotId)))
+        );
         team.pilots.push({
           id: pilotId,
-          slotId: pilotId,
+          slotId,
           name: row.pilotName,
           valueGroup: "unassigned",
           selectedForDraft: false,
@@ -887,26 +887,14 @@ export function AdminSeasonPage() {
       return;
     }
 
-    const pilotsByGroup = activeWizardSeason.teams.reduce(
-      (counts, team) => {
-        team.pilots.forEach((pilot) => {
-          if (pilot.valueGroup !== "unassigned") {
-            counts[pilot.valueGroup] += 1;
-          }
-        });
-        return counts;
-      },
-      { A: 0, B: 0, C: 0, D: 0, E: 0 } as Record<PilotValueGroup, number>
-    );
-    if (pilotsByGroup[pilotValueGroupDraft] >= activeWizardSeason.draftConfig.groupLimits[pilotValueGroupDraft]) {
-      setPilotMessage(`Group ${pilotValueGroupDraft} is full based on current rules.`);
-      return;
-    }
-
     const nextPilotId = createPilotId(trimmedName, new Set(selectedTeam.pilots.map((pilot) => pilot.id)));
+    const nextSlotId = createSlotId(
+      trimmedName,
+      new Set(activeWizardSeason.teams.flatMap((team) => team.pilots.map((pilot) => pilot.slotId)))
+    );
     const nextPilot = {
       id: nextPilotId,
-      slotId: nextPilotId,
+      slotId: nextSlotId,
       name: trimmedName,
       valueGroup: pilotValueGroupDraft,
       selectedForDraft: false,
@@ -1038,7 +1026,7 @@ export function AdminSeasonPage() {
     let sourcePilotIndex = -1;
     activeWizardSeason.teams.forEach((team, teamIndex) => {
       team.pilots.forEach((pilot, pilotIndex) => {
-        if (pilot.id === exceptionSourcePilotId) {
+        if (pilot.slotId === exceptionSourceSlotId) {
           sourceTeamIndex = teamIndex;
           sourcePilotIndex = pilotIndex;
         }
@@ -1080,7 +1068,7 @@ export function AdminSeasonPage() {
       return;
     }
 
-    setExceptionSourcePilotId(replacementPilot.id);
+    setExceptionSourceSlotId(replacementPilot.slotId);
     setExceptionReplacementName("");
     setExceptionMessage("Exceptional replacement saved. Slot points remain on the same draft slot.");
   };
@@ -1094,11 +1082,11 @@ export function AdminSeasonPage() {
       setExceptionMessage("Exceptional changes are allowed only in active season with admin override.");
       return;
     }
-    if (!exceptionSourcePilotId || !exceptionTargetPilotId) {
+    if (!exceptionSourceSlotId || !exceptionTargetSlotId) {
       setExceptionMessage("Select both source and target pilots.");
       return;
     }
-    if (exceptionSourcePilotId === exceptionTargetPilotId) {
+    if (exceptionSourceSlotId === exceptionTargetSlotId) {
       setExceptionMessage("Source and target must be different pilots.");
       return;
     }
@@ -1110,11 +1098,11 @@ export function AdminSeasonPage() {
 
     activeWizardSeason.teams.forEach((team, teamIndex) => {
       team.pilots.forEach((pilot, pilotIndex) => {
-        if (pilot.id === exceptionSourcePilotId) {
+        if (pilot.slotId === exceptionSourceSlotId) {
           sourceTeamIndex = teamIndex;
           sourcePilotIndex = pilotIndex;
         }
-        if (pilot.id === exceptionTargetPilotId) {
+        if (pilot.slotId === exceptionTargetSlotId) {
           targetTeamIndex = teamIndex;
           targetPilotIndex = pilotIndex;
         }
@@ -1156,8 +1144,8 @@ export function AdminSeasonPage() {
       return;
     }
 
-    setExceptionSourcePilotId(nextTargetPilot.id);
-    setExceptionTargetPilotId(nextSourcePilot.id);
+    setExceptionSourceSlotId(nextTargetPilot.slotId);
+    setExceptionTargetSlotId(nextSourcePilot.slotId);
     setExceptionMessage("Exceptional transfer saved. Draft slot points stay attached to their slots.");
   };
 
@@ -1206,6 +1194,12 @@ export function AdminSeasonPage() {
       (total, group) => total + nextGroupLimits[group],
       0
     );
+    if (nextDraftPilotCount !== nextEffectiveDraftPilotLimit) {
+      setDraftConfigMessage(
+        `Draft pilots count must equal total active group limits (${nextEffectiveDraftPilotLimit}).`
+      );
+      return;
+    }
 
     let movedToUnassignedCount = 0;
     let unselectedByGroupRulesCount = 0;
@@ -1650,12 +1644,12 @@ export function AdminSeasonPage() {
               <label className="space-y-1">
                 <span className="text-xs font-semibold text-[var(--color-neutral-700)]">Slot Pilot</span>
                 <select
-                  value={exceptionSourcePilotId}
+                  value={exceptionSourceSlotId}
                   onChange={(event) => handleExceptionSourcePilotChange(event.target.value)}
                   className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
                 >
                   {activeSeasonPilots.map((pilot) => (
-                    <option key={pilot.pilotId} value={pilot.pilotId}>
+                    <option key={pilot.slotId} value={pilot.slotId}>
                       {pilot.teamName} | {pilot.pilotName} | slot {pilot.slotId}
                     </option>
                   ))}
@@ -1686,12 +1680,12 @@ export function AdminSeasonPage() {
               <label className="space-y-1">
                 <span className="text-xs font-semibold text-[var(--color-neutral-700)]">Source Pilot</span>
                 <select
-                  value={exceptionSourcePilotId}
+                  value={exceptionSourceSlotId}
                   onChange={(event) => handleExceptionSourcePilotChange(event.target.value)}
                   className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
                 >
                   {activeSeasonPilots.map((pilot) => (
-                    <option key={`source-${pilot.pilotId}`} value={pilot.pilotId}>
+                    <option key={`source-${pilot.slotId}`} value={pilot.slotId}>
                       {pilot.teamName} | {pilot.pilotName} | slot {pilot.slotId}
                     </option>
                   ))}
@@ -1700,14 +1694,14 @@ export function AdminSeasonPage() {
               <label className="space-y-1">
                 <span className="text-xs font-semibold text-[var(--color-neutral-700)]">Target Slot Pilot</span>
                 <select
-                  value={exceptionTargetPilotId}
+                  value={exceptionTargetSlotId}
                   onChange={(event) => handleExceptionTargetPilotChange(event.target.value)}
                   className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
                 >
                   {activeSeasonPilots
-                    .filter((pilot) => pilot.pilotId !== exceptionSourcePilotId)
+                    .filter((pilot) => pilot.slotId !== exceptionSourceSlotId)
                     .map((pilot) => (
-                      <option key={`target-${pilot.pilotId}`} value={pilot.pilotId}>
+                      <option key={`target-${pilot.slotId}`} value={pilot.slotId}>
                         {pilot.teamName} | {pilot.pilotName} | slot {pilot.slotId}
                       </option>
                     ))}

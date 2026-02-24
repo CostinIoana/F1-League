@@ -6,7 +6,7 @@ import { useSeasons } from "../../seasons/useSeasons";
 export function AdminScoringPage() {
   const { seasons, updateSeason } = useSeasons();
   const [selectedRaceId, setSelectedRaceId] = useState("");
-  const [selectedPilotId, setSelectedPilotId] = useState("");
+  const [selectedSlotId, setSelectedSlotId] = useState("");
   const [pointsDraft, setPointsDraft] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
@@ -40,8 +40,12 @@ export function AdminScoringPage() {
       setMessage("Select a race.");
       return;
     }
-    if (!selectedPilotId) {
+    if (!selectedSlotId) {
       setMessage("Select a pilot slot.");
+      return;
+    }
+    if (!selectedRace) {
+      setMessage("Selected race was not found.");
       return;
     }
 
@@ -51,7 +55,7 @@ export function AdminScoringPage() {
       return;
     }
 
-    const selectedPilot = draftPilots.find((pilot) => pilot.pilotId === selectedPilotId);
+    const selectedPilot = draftPilots.find((pilot) => pilot.slotId === selectedSlotId);
     if (!selectedPilot) {
       setMessage("Selected pilot was not found.");
       return;
@@ -160,16 +164,16 @@ export function AdminScoringPage() {
           <label className="space-y-1">
             <span className="text-xs font-semibold text-[var(--color-neutral-700)]">Pilot Slot</span>
             <select
-              value={selectedPilotId}
+              value={selectedSlotId}
               onChange={(event) => {
-                setSelectedPilotId(event.target.value);
+                setSelectedSlotId(event.target.value);
                 setMessage(null);
               }}
               className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
             >
               <option value="">Select pilot</option>
               {draftPilots.map((pilot) => (
-                <option key={pilot.pilotId} value={pilot.pilotId}>
+                <option key={pilot.slotId} value={pilot.slotId}>
                   {pilot.teamName} | {pilot.pilotName} | slot {pilot.slotId}
                 </option>
               ))}

@@ -494,11 +494,7 @@ export function SeasonWizard({
                 className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
               >
                 {availableValueGroups.map((group) => (
-                  <option
-                    key={group}
-                    value={group}
-                    disabled={pilotsByGroup[group] >= season.draftConfig.groupLimits[group]}
-                  >
+                  <option key={group} value={group}>
                     {group}
                   </option>
                 ))}
@@ -663,14 +659,7 @@ export function SeasonWizard({
                           >
                             <option value="unassigned">Unassigned</option>
                             {availableValueGroups.map((group) => (
-                              <option
-                                key={group}
-                                value={group}
-                                disabled={
-                                  group !== pilot.valueGroup &&
-                                  pilotsByGroup[group] >= season.draftConfig.groupLimits[group]
-                                }
-                              >
+                              <option key={group} value={group}>
                                 Group {group}
                               </option>
                             ))}
