@@ -17,10 +17,9 @@ export function AdminScoringPage() {
 
   const selectedRace = activeSeason?.races.find((race) => race.id === selectedRaceId) ?? null;
   const selectedRaceScore = activeSeason?.raceScores.find((score) => score.raceId === selectedRaceId) ?? null;
-  const draftPilots = activeSeason
+  const allPilots = activeSeason
     ? activeSeason.teams.flatMap((team) =>
         team.pilots
-          .filter((pilot) => pilot.selectedForDraft)
           .map((pilot) => ({
             pilotId: pilot.id,
             slotId: pilot.slotId,
@@ -55,7 +54,7 @@ export function AdminScoringPage() {
       return;
     }
 
-    const selectedPilot = draftPilots.find((pilot) => pilot.slotId === selectedSlotId);
+    const selectedPilot = allPilots.find((pilot) => pilot.slotId === selectedSlotId);
     if (!selectedPilot) {
       setMessage("Selected pilot was not found.");
       return;
@@ -172,7 +171,7 @@ export function AdminScoringPage() {
               className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
             >
               <option value="">Select pilot</option>
-              {draftPilots.map((pilot) => (
+              {allPilots.map((pilot) => (
                 <option key={pilot.slotId} value={pilot.slotId}>
                   {pilot.teamName} | {pilot.pilotName} | slot {pilot.slotId}
                 </option>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import type { SessionUser } from "../session/types";
 import { navItems } from "../navigation";
 import type { Season } from "../seasons/types";
@@ -40,6 +40,7 @@ export function AppShell({
   onAccountSettings,
   onSignOut,
 }: AppShellProps) {
+  const location = useLocation();
   const selectedSeason =
     seasons.find((season) => season.id === selectedSeasonId) ?? seasons[0] ?? null;
   const displayName = user.name.trim() || "User";
@@ -111,13 +112,42 @@ export function AppShell({
               </div>
 
               {adminNav.map((item) => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}
-                >
-                  {item.label}
-                </NavLink>
+                <div key={item.path}>
+                  <NavLink
+                    to={item.path}
+                    className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}
+                  >
+                    {item.label}
+                  </NavLink>
+                  {item.path === "/admin/season" && (
+                    <div className="mt-1 ml-3 grid gap-1">
+                      <NavLink
+                        to="/admin/season?view=newDraft"
+                        className={() => {
+                          const params = new URLSearchParams(location.search);
+                          const isActive =
+                            location.pathname === "/admin/season" &&
+                            (params.get("view") === null || params.get("view") === "newDraft");
+                          return `${linkBase} text-xs ${isActive ? linkActive : linkInactive}`;
+                        }}
+                      >
+                        New Draft Season
+                      </NavLink>
+                      <NavLink
+                        to="/admin/season?view=completedSeasons"
+                        className={() => {
+                          const params = new URLSearchParams(location.search);
+                          const isActive =
+                            location.pathname === "/admin/season" &&
+                            params.get("view") === "completedSeasons";
+                          return `${linkBase} text-xs ${isActive ? linkActive : linkInactive}`;
+                        }}
+                      >
+                        Completed Seasons
+                      </NavLink>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           )}

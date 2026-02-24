@@ -10,6 +10,7 @@ import { LeaderboardsPage } from "./pages/LeaderboardsPage";
 import { MyTeamPage } from "./pages/MyTeamPage";
 import { RacesPage } from "./pages/RacesPage";
 import { AdminSeasonPage } from "./pages/admin/AdminSeasonPage";
+import { AdminRacesPage } from "./pages/admin/AdminRacesPage";
 import { AdminUsersPage } from "./pages/admin/AdminUsersPage";
 import { AdminScoringPage } from "./pages/admin/AdminScoringPage";
 import { AdminNotificationsPage } from "./pages/admin/AdminNotificationsPage";
@@ -21,6 +22,7 @@ const routeElementByKey: Record<NavigationItemKey, ReactElement> = {
   myTeam: <MyTeamPage />,
   races: <RacesPage />,
   adminSeason: <AdminSeasonPage />,
+  adminRaces: <AdminRacesPage />,
   adminUsers: <AdminUsersPage />,
   adminScoring: <AdminScoringPage />,
   adminNotifications: <AdminNotificationsPage />,

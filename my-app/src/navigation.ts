@@ -8,10 +8,11 @@ export type NavItem = {
 };
 
 export const navItems: NavItem[] = [
-  { label: "Leaderboards", path: "/leaderboards", roles: ["admin", "player"], section: "main" },
+  { label: "Leaderboards", path: "/leaderboards", roles: ["admin"], section: "admin" },
   { label: "My Team", path: "/my-team", roles: ["admin", "player"], section: "main" },
   { label: "Races", path: "/races", roles: ["admin", "player"], section: "main" },
   { label: "Season Setup", path: "/admin/season", roles: ["admin"], section: "admin" },
+  { label: "Races", path: "/admin/races", roles: ["admin"], section: "admin" },
   { label: "Users", path: "/admin/users", roles: ["admin"], section: "admin" },
   { label: "Scoring", path: "/admin/scoring", roles: ["admin"], section: "admin" },
   { label: "Notifications", path: "/admin/notifications", roles: ["admin"], section: "admin" },
@@ -24,6 +25,7 @@ export type NavigationItemKey =
   | "myTeam"
   | "races"
   | "adminSeason"
+  | "adminRaces"
   | "adminUsers"
   | "adminScoring"
   | "adminNotifications";
@@ -44,7 +46,14 @@ export type NavigationSection = {
 };
 
 const NAV_ITEMS: NavigationItem[] = [
-  { key: "leaderboards", label: "Leaderboards", path: "/leaderboards", section: "player" },
+  {
+    key: "leaderboards",
+    label: "Leaderboards",
+    path: "/leaderboards",
+    section: "admin",
+    requiredRoles: ["admin"],
+    requiredPermissions: ["admin:scoring:read"],
+  },
   { key: "myTeam", label: "My Team", path: "/my-team", section: "player" },
   { key: "races", label: "Races", path: "/races", section: "player" },
   {
@@ -54,6 +63,14 @@ const NAV_ITEMS: NavigationItem[] = [
     section: "admin",
     requiredRoles: ["admin"],
     requiredPermissions: ["admin:season:read"],
+  },
+  {
+    key: "adminRaces",
+    label: "Races",
+    path: "/admin/races",
+    section: "admin",
+    requiredRoles: ["admin"],
+    requiredPermissions: ["admin:scoring:read"],
   },
   {
     key: "adminUsers",

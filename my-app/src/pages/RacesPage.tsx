@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Surface } from "../components/ui/Surface";
+import { getRaceShortCode } from "../seasons/raceCode";
 import { useSeasons } from "../seasons/useSeasons";
 import { useSession } from "../session/useSession";
 
@@ -134,6 +135,51 @@ export function RacesPage() {
     return result;
   }, [selectedSeason]);
 
+  const pilotPointsMatrix = useMemo(() => {
+    if (!selectedSeason) {
+      return [] as Array<{
+        rank: number;
+        pilotName: string;
+        teamName: string;
+        totalPoints: number;
+        pointsByRace: number[];
+      }>;
+    }
+
+    const scoreByRaceAndSlot = new Map<string, Map<string, number>>();
+    selectedSeason.raceScores.forEach((raceScore) => {
+      const slotPoints = new Map<string, number>();
+      raceScore.entries.forEach((entry) => {
+        slotPoints.set(entry.slotId, entry.points);
+      });
+      scoreByRaceAndSlot.set(raceScore.raceId, slotPoints);
+    });
+
+    const rows = selectedSeason.teams.flatMap((team) =>
+      team.pilots
+        .filter((pilot) => pilot.selectedForDraft)
+        .map((pilot) => {
+          const pointsByRace = selectedSeason.races.map(
+            (race) => scoreByRaceAndSlot.get(race.id)?.get(pilot.slotId) ?? 0
+          );
+          const totalPoints = pointsByRace.reduce((sum, value) => sum + value, 0);
+          return {
+            pilotName: pilot.name,
+            teamName: team.name,
+            totalPoints,
+            pointsByRace,
+          };
+        })
+    );
+
+    rows.sort((a, b) => b.totalPoints - a.totalPoints || a.pilotName.localeCompare(b.pilotName));
+
+    return rows.map((row, index) => ({
+      rank: index + 1,
+      ...row,
+    }));
+  }, [selectedSeason]);
+
   const userRankings = useMemo(() => {
     if (!selectedSeason || !selectedRace) {
       return [] as Array<{
@@ -259,91 +305,157 @@ export function RacesPage() {
       </header>
 
       <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
-        <div className="text-sm font-semibold text-[var(--color-neutral-900)]">Race List</div>
-        <div className="mt-2 space-y-2">
-          {raceStatusList.length === 0 ? (
-            <div className="text-xs text-[var(--color-neutral-500)]">No races configured for this season.</div>
-          ) : (
-            raceStatusList.map((race, index) => (
-              <button
-                key={race.id}
-                type="button"
-                onClick={() => setSelectedRaceId(race.id)}
-                className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left ${
-                  race.id === effectiveSelectedRaceId
-                    ? "border-[var(--color-primary-500)] bg-red-50"
-                    : "border-[var(--color-neutral-200)] bg-[var(--color-surface)]"
-                }`}
-              >
-                <div className="text-sm text-[var(--color-neutral-800)]">
-                  {index + 1}. {race.name} {race.date ? `(${race.date})` : ""}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge tone={race.hasScores ? "primary" : "neutral"}>
-                    {race.hasScores ? "Complete" : "Pending"}
-                  </Badge>
-                  {race.locked && <Badge tone="secondary">Locked</Badge>}
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-      </Surface>
-
-      <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="text-sm font-semibold text-[var(--color-neutral-900)]">
-            {selectedRace ? `Race Detail: ${selectedRace.name}` : "Race Detail"}
+          <div className="text-sm font-semibold text-[var(--color-neutral-900)]">Pilot Points Matrix</div>
+          <div className="text-xs text-[var(--color-neutral-600)]">
+            Total + points pe fiecare etapa (derulare pe orizontala).
           </div>
-          <Button type="button" size="sm" onClick={handleSaveRaceScores} disabled={!canEditScores}>
-            Save Scores
-          </Button>
         </div>
-        {!canEditScores && (
-          <div className="mt-1 text-xs text-[var(--color-neutral-600)]">
-            Scoring is editable only by admin in active season.
+        {pilotPointsMatrix.length === 0 ? (
+          <div className="mt-2 text-xs text-[var(--color-neutral-500)]">No drafted pilots available.</div>
+        ) : (
+          <div className="mt-2 overflow-x-auto">
+            <table className="min-w-full border-collapse text-xs">
+              <thead>
+                <tr className="bg-[var(--color-neutral-100)] text-[var(--color-neutral-900)]">
+                  <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-left">
+                    Rank
+                  </th>
+                  <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-left">
+                    Pilot
+                  </th>
+                  <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-right">
+                    Total
+                  </th>
+                  {selectedSeason.races.map((race) => (
+                    <th
+                      key={race.id}
+                      className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-right"
+                    >
+                      {getRaceShortCode(race.name)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pilotPointsMatrix.map((row, rowIndex) => (
+                  <tr
+                    key={`${row.teamName}-${row.pilotName}`}
+                    className={rowIndex % 2 === 0 ? "bg-[var(--color-surface)]" : "bg-[var(--color-neutral-100)]"}
+                  >
+                    <td className="border border-[var(--color-neutral-200)] px-2 py-1 font-semibold text-[var(--color-neutral-800)]">
+                      {row.rank}
+                    </td>
+                    <td className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-[var(--color-neutral-900)]">
+                      {row.pilotName}
+                    </td>
+                    <td className="border border-[var(--color-neutral-200)] px-2 py-1 text-right font-semibold text-[var(--color-neutral-900)]">
+                      {row.totalPoints}
+                    </td>
+                    {row.pointsByRace.map((points, raceIndex) => (
+                      <td
+                        key={`${row.pilotName}-${selectedSeason.races[raceIndex]?.id ?? raceIndex}`}
+                        className="border border-[var(--color-neutral-200)] px-2 py-1 text-right text-[var(--color-neutral-800)]"
+                      >
+                        {points}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
-        <div className="mt-3 space-y-2">
-          {!selectedRace ? (
-            <div className="text-xs text-[var(--color-neutral-500)]">Select a race to view details.</div>
-          ) : raceEntries.length === 0 ? (
-            <div className="text-xs text-[var(--color-neutral-500)]">
-              No drafted pilots available for scoring.
-            </div>
-          ) : (
-            raceEntries.map((entry, index) => (
-              <div
-                key={entry.slotId}
-                className="grid items-center gap-2 rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 md:grid-cols-[auto_1fr_auto_auto]"
-              >
-                <div className="text-xs font-semibold text-[var(--color-neutral-600)]">#{index + 1}</div>
-                <div className="text-sm text-[var(--color-neutral-800)]">
-                  {entry.pilotName} <span className="text-xs text-[var(--color-neutral-500)]">({entry.teamName})</span>
-                </div>
-                <div className="flex items-center">
-                  <input
-                    type="number"
-                    value={pointsDraftBySlot[entry.slotId] ?? String(entry.points)}
-                    onChange={(event) => {
-                      setPointsDraftBySlot((current) => ({
-                        ...current,
-                        [entry.slotId]: event.target.value,
-                      }));
-                      setMessage(null);
-                    }}
-                    disabled={!canEditScores}
-                    className="w-20 rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-2 py-1 text-right text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
-                  />
-                </div>
-                <div className="text-right text-sm font-semibold text-[var(--color-neutral-800)]">
-                  {entry.points} pts
-                </div>
-              </div>
-            ))
-          )}
-        </div>
       </Surface>
+
+      <div className="grid gap-3 xl:grid-cols-[320px_1fr]">
+        <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
+          <div className="text-sm font-semibold text-[var(--color-neutral-900)]">Race List</div>
+          <div className="mt-2 space-y-2">
+            {raceStatusList.length === 0 ? (
+              <div className="text-xs text-[var(--color-neutral-500)]">No races configured for this season.</div>
+            ) : (
+              raceStatusList.map((race, index) => (
+                <button
+                  key={race.id}
+                  type="button"
+                  onClick={() => setSelectedRaceId(race.id)}
+                  className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left ${
+                    race.id === effectiveSelectedRaceId
+                      ? "border-[var(--color-primary-500)] bg-[var(--color-neutral-100)]"
+                      : "border-[var(--color-neutral-200)] bg-[var(--color-surface)]"
+                  }`}
+                >
+                  <div className="text-sm text-[var(--color-neutral-800)]">
+                    {index + 1}. {race.name} {race.date ? `(${race.date})` : ""}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge tone={race.hasScores ? "primary" : "neutral"}>
+                      {race.hasScores ? "Complete" : "Pending"}
+                    </Badge>
+                    {race.locked && <Badge tone="secondary">Locked</Badge>}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </Surface>
+
+        <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-semibold text-[var(--color-neutral-900)]">
+              {selectedRace ? `Race Detail: ${selectedRace.name}` : "Race Detail"}
+            </div>
+            <Button type="button" size="sm" onClick={handleSaveRaceScores} disabled={!canEditScores}>
+              Save Scores
+            </Button>
+          </div>
+          {!canEditScores && (
+            <div className="mt-1 text-xs text-[var(--color-neutral-600)]">
+              Scoring is editable only by admin in active season.
+            </div>
+          )}
+          <div className="mt-3 space-y-2">
+            {!selectedRace ? (
+              <div className="text-xs text-[var(--color-neutral-500)]">Select a race to view details.</div>
+            ) : raceEntries.length === 0 ? (
+              <div className="text-xs text-[var(--color-neutral-500)]">
+                No drafted pilots available for scoring.
+              </div>
+            ) : (
+              raceEntries.map((entry, index) => (
+                <div
+                  key={entry.slotId}
+                  className="grid items-center gap-2 rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 md:grid-cols-[auto_1fr_auto_auto]"
+                >
+                  <div className="text-xs font-semibold text-[var(--color-neutral-600)]">#{index + 1}</div>
+                  <div className="text-sm text-[var(--color-neutral-800)]">
+                    {entry.pilotName} <span className="text-xs text-[var(--color-neutral-500)]">({entry.teamName})</span>
+                  </div>
+                  <div className="flex items-center">
+                    <input
+                      type="number"
+                      value={pointsDraftBySlot[entry.slotId] ?? String(entry.points)}
+                      onChange={(event) => {
+                        setPointsDraftBySlot((current) => ({
+                          ...current,
+                          [entry.slotId]: event.target.value,
+                        }));
+                        setMessage(null);
+                      }}
+                      disabled={!canEditScores}
+                      className="w-20 rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-2 py-1 text-right text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
+                    />
+                  </div>
+                  <div className="text-right text-sm font-semibold text-[var(--color-neutral-800)]">
+                    {entry.points} pts
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </Surface>
+      </div>
 
       <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
         <div className="text-sm font-semibold text-[var(--color-neutral-900)]">User Rankings</div>

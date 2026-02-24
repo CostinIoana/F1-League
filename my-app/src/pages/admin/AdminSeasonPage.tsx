@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
@@ -95,7 +96,9 @@ function createSlotId(name: string, existingIds: Set<string>) {
 
 export function AdminSeasonPage() {
   const { seasons, getSeasonById, createDraftSeason, updateSeason, deleteSeason } = useSeasons();
-  const [seasonSetupSubmenu, setSeasonSetupSubmenu] = useState<SeasonSetupSubmenu>("newDraft");
+  const [searchParams] = useSearchParams();
+  const seasonSetupSubmenu: SeasonSetupSubmenu =
+    searchParams.get("view") === "completedSeasons" ? "completedSeasons" : "newDraft";
   const [wizardSeasonId, setWizardSeasonId] = useState<string | null>(null);
   const [wizardStep, setWizardStep] = useState(1);
   const [seasonInfoDraft, setSeasonInfoDraft] = useState<SeasonInfoDraft>({
@@ -1481,27 +1484,6 @@ export function AdminSeasonPage() {
           <div className="text-xs text-[var(--color-neutral-600)]">{seasonActionMessage}</div>
         )}
       </header>
-
-      <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant={seasonSetupSubmenu === "newDraft" ? "solid" : "outline"}
-            onClick={() => setSeasonSetupSubmenu("newDraft")}
-          >
-            New Draft Season
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={seasonSetupSubmenu === "completedSeasons" ? "solid" : "outline"}
-            onClick={() => setSeasonSetupSubmenu("completedSeasons")}
-          >
-            Completed Seasons
-          </Button>
-        </div>
-      </Surface>
 
       {pendingDelete && (
         <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
