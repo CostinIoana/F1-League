@@ -112,39 +112,63 @@ export function LeaderboardsPage() {
     return seasons.find((season) => season.id === session.selectedSeasonId) ?? null;
   }, [session, seasons]);
 
+  const raceIdsWithScores = useMemo(() => {
+    if (!selectedSeason) {
+      return new Set<string>();
+    }
+    return new Set(
+      selectedSeason.raceScores
+        .filter((raceScore) => raceScore.entries.length > 0)
+        .map((raceScore) => raceScore.raceId)
+    );
+  }, [selectedSeason]);
+
+  const raceIdsForSelectedScope = useMemo(() => {
+    if (!selectedSeason) {
+      return new Set<string>();
+    }
+    if (scoreScope === SEASON_TOTAL_SCOPE) {
+      return raceIdsWithScores;
+    }
+
+    const hasScoreForSelectedRace = selectedSeason.raceScores.some(
+      (raceScore) => raceScore.raceId === scoreScope && raceScore.entries.length > 0
+    );
+    if (!hasScoreForSelectedRace) {
+      return new Set<string>();
+    }
+    return new Set([scoreScope]);
+  }, [raceIdsWithScores, scoreScope, selectedSeason]);
+
   const pointsBySlot = useMemo(() => {
     const result: Record<string, number> = {};
     if (!selectedSeason) {
       return result;
     }
-    if (scoreScope === SEASON_TOTAL_SCOPE) {
-      selectedSeason.raceScores.forEach((raceScore) => {
+    selectedSeason.raceScores
+      .filter((raceScore) => raceIdsForSelectedScope.has(raceScore.raceId))
+      .forEach((raceScore) => {
         raceScore.entries.forEach((entry) => {
           result[entry.slotId] = (result[entry.slotId] ?? 0) + entry.points;
         });
       });
-      return result;
-    }
-
-    const raceScore = selectedSeason.raceScores.find((item) => item.raceId === scoreScope);
-    raceScore?.entries.forEach((entry) => {
-      result[entry.slotId] = entry.points;
-    });
     return result;
-  }, [selectedSeason, scoreScope]);
+  }, [raceIdsForSelectedScope, selectedSeason]);
 
   const seasonTotalPointsBySlot = useMemo(() => {
     const result: Record<string, number> = {};
     if (!selectedSeason) {
       return result;
     }
-    selectedSeason.raceScores.forEach((raceScore) => {
-      raceScore.entries.forEach((entry) => {
-        result[entry.slotId] = (result[entry.slotId] ?? 0) + entry.points;
+    selectedSeason.raceScores
+      .filter((raceScore) => raceIdsWithScores.has(raceScore.raceId))
+      .forEach((raceScore) => {
+        raceScore.entries.forEach((entry) => {
+          result[entry.slotId] = (result[entry.slotId] ?? 0) + entry.points;
+        });
       });
-    });
     return result;
-  }, [selectedSeason]);
+  }, [raceIdsWithScores, selectedSeason]);
 
   const pilotStandings = useMemo(() => {
     if (!selectedSeason) {
@@ -233,12 +257,6 @@ export function LeaderboardsPage() {
             pilotPosition: pilotPositionBySlotForScope[slotId] ?? Number.MAX_SAFE_INTEGER,
           };
         });
-        picks.sort(
-          (a, b) =>
-            b.points - a.points ||
-            a.pilotPosition - b.pilotPosition ||
-            a.pilotCode.localeCompare(b.pilotCode)
-        );
         const points = picks.reduce((sum, pick) => sum + pick.points, 0);
         return {
           email: userSelection.email,
@@ -307,12 +325,6 @@ export function LeaderboardsPage() {
           pilotPosition: seasonPilotPositionBySlot[slotId] ?? Number.MAX_SAFE_INTEGER,
         };
       });
-      picks.sort(
-        (a, b) =>
-          b.points - a.points ||
-          a.pilotPosition - b.pilotPosition ||
-          a.pilotCode.localeCompare(b.pilotCode)
-      );
       const totalPoints = picks.reduce((sum, pick) => sum + pick.points, 0);
       return {
         participant: getParticipantLabel(userSelection.email),
@@ -338,7 +350,7 @@ export function LeaderboardsPage() {
   const topTeam = teamStandings[0]?.teamName ?? "N/A";
   const selectedRaceName =
     scoreScope === SEASON_TOTAL_SCOPE
-      ? "Season Total"
+      ? "General (curse punctate)"
       : selectedSeason?.races.find((race) => race.id === scoreScope)?.name ?? "Race";
 
   const shareText = useMemo(() => {
@@ -391,8 +403,12 @@ export function LeaderboardsPage() {
 
       <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="text-sm font-semibold text-[var(--color-neutral-900)]">Users Points Matrix</div>
-          <div className="text-xs text-[var(--color-neutral-600)]">Model clasament: participant + piloți + puncte.</div>
+          <div className="text-sm font-semibold text-[var(--color-neutral-900)]">
+            Matrice puncte utilizatori (General - curse punctate)
+          </div>
+          <div className="text-xs text-[var(--color-neutral-600)]">
+            Clasament utilizatori + componenta echipei + puncte din toate cursele punctate.
+          </div>
         </div>
         {userPointsMatrix.length === 0 ? (
           <div className="mt-2 text-xs text-[var(--color-neutral-500)]">No user standings available.</div>
@@ -401,12 +417,14 @@ export function LeaderboardsPage() {
             <table className="min-w-full border-collapse text-xs">
               <thead>
                 <tr className="bg-[var(--color-neutral-100)] text-[var(--color-neutral-900)]">
-                  <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-left">CLASAMENT</th>
-                  <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-right">Punct</th>
+                  <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-left">Clasament</th>
+                  <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-right">Puncte</th>
                   <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-left">Participant</th>
                   {Array.from({ length: userMatrixPilotCount }).map((_, index) => (
                     <Fragment key={`matrix-header-${index + 1}`}>
-                      <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-left">Pilot</th>
+                      <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-left">
+                        Pilot {index + 1}
+                      </th>
                       <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-right">P</th>
                     </Fragment>
                   ))}
@@ -456,7 +474,7 @@ export function LeaderboardsPage() {
                   : "border-[var(--color-neutral-200)] bg-[var(--color-surface)]"
               }`}
             >
-              <span className="text-sm text-[var(--color-neutral-800)]">Season Total</span>
+              <span className="text-sm text-[var(--color-neutral-800)]">General (curse punctate)</span>
               <Badge tone="neutral">ALL</Badge>
             </button>
             {selectedSeason.races.map((race, index) => (

@@ -43,7 +43,7 @@ export function AppShell({
   const location = useLocation();
   const selectedSeason =
     seasons.find((season) => season.id === selectedSeasonId) ?? seasons[0] ?? null;
-  const displayName = user.name.trim() || "User";
+  const displayName = user.name.trim() || "Utilizator";
   const role = user.role;
   const mainNav = navItems.filter((item) => item.section === "main" && item.roles.includes(role));
   const adminNav = navItems.filter((item) => item.section === "admin" && item.roles.includes(role));
@@ -108,7 +108,7 @@ export function AppShell({
           {adminNav.length > 0 && (
             <div className="mt-3 border-t border-[var(--color-neutral-200)] pt-3">
               <div className="mb-1 px-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-neutral-500)]">
-                Admin
+                Administrare
               </div>
 
               {adminNav.map((item) => (
@@ -131,7 +131,7 @@ export function AppShell({
                           return `${linkBase} text-xs ${isActive ? linkActive : linkInactive}`;
                         }}
                       >
-                        New Draft Season
+                        Sezon nou de draft
                       </NavLink>
                       <NavLink
                         to="/admin/season?view=completedSeasons"
@@ -143,7 +143,7 @@ export function AppShell({
                           return `${linkBase} text-xs ${isActive ? linkActive : linkInactive}`;
                         }}
                       >
-                        Completed Seasons
+                        Sezoane finalizate
                       </NavLink>
                     </div>
                   )}
@@ -161,7 +161,7 @@ export function AppShell({
                   htmlFor="season-select"
                   className="text-xs font-semibold uppercase tracking-wide text-[var(--color-neutral-500)]"
                 >
-                  Season
+                  Sezon
                 </label>
                 <select
                   id="season-select"
@@ -183,7 +183,7 @@ export function AppShell({
                   onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
                   className="h-9 rounded-lg border border-[var(--color-neutral-200)] px-3 text-sm font-semibold text-[var(--color-neutral-700)] hover:bg-[var(--color-neutral-100)]"
                 >
-                  {theme === "dark" ? "Light" : "Dark"}
+                  {theme === "dark" ? "Luminos" : "Intunecat"}
                 </button>
 
                 <div className="relative" ref={userMenuRef}>
@@ -213,7 +213,7 @@ export function AppShell({
                         }}
                         className="w-full rounded-md px-3 py-2 text-left text-sm text-[var(--color-neutral-700)] hover:bg-[var(--color-neutral-100)]"
                       >
-                        Profile
+                        Profil
                       </button>
                       <button
                         type="button"
@@ -223,7 +223,7 @@ export function AppShell({
                         }}
                         className="w-full rounded-md px-3 py-2 text-left text-sm text-[var(--color-neutral-700)] hover:bg-[var(--color-neutral-100)]"
                       >
-                        Account Settings
+                        Setari cont
                       </button>
                       <button
                         type="button"
@@ -233,7 +233,7 @@ export function AppShell({
                         }}
                         className="w-full rounded-md px-3 py-2 text-left text-sm text-[var(--color-primary-500)] hover:bg-[var(--color-neutral-100)]"
                       >
-                        Sign Out
+                        Deconectare
                       </button>
                     </div>
                   )}

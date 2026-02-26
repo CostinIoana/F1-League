@@ -8,14 +8,14 @@ export type NavItem = {
 };
 
 export const navItems: NavItem[] = [
-  { label: "Leaderboards", path: "/leaderboards", roles: ["admin"], section: "admin" },
-  { label: "My Team", path: "/my-team", roles: ["admin", "player"], section: "main" },
-  { label: "Races", path: "/races", roles: ["admin", "player"], section: "main" },
-  { label: "Season Setup", path: "/admin/season", roles: ["admin"], section: "admin" },
-  { label: "Races", path: "/admin/races", roles: ["admin"], section: "admin" },
-  { label: "Users", path: "/admin/users", roles: ["admin"], section: "admin" },
-  { label: "Scoring", path: "/admin/scoring", roles: ["admin"], section: "admin" },
-  { label: "Notifications", path: "/admin/notifications", roles: ["admin"], section: "admin" },
+  { label: "Clasamente", path: "/leaderboards", roles: ["admin"], section: "admin" },
+  { label: "Echipa mea", path: "/my-team", roles: ["admin", "player"], section: "main" },
+  { label: "Curse", path: "/races", roles: ["admin", "player"], section: "main" },
+  { label: "Setare sezon", path: "/admin/season", roles: ["admin"], section: "admin" },
+  { label: "Curse", path: "/admin/races", roles: ["admin"], section: "admin" },
+  { label: "Utilizatori", path: "/admin/users", roles: ["admin"], section: "admin" },
+  { label: "Scoruri", path: "/admin/scoring", roles: ["admin"], section: "admin" },
+  { label: "Notificari", path: "/admin/notifications", roles: ["admin"], section: "admin" },
 ];
 
 export type NavigationSectionId = "player" | "admin";
@@ -48,17 +48,17 @@ export type NavigationSection = {
 const NAV_ITEMS: NavigationItem[] = [
   {
     key: "leaderboards",
-    label: "Leaderboards",
+    label: "Clasamente",
     path: "/leaderboards",
     section: "admin",
     requiredRoles: ["admin"],
     requiredPermissions: ["admin:scoring:read"],
   },
-  { key: "myTeam", label: "My Team", path: "/my-team", section: "player" },
-  { key: "races", label: "Races", path: "/races", section: "player" },
+  { key: "myTeam", label: "Echipa mea", path: "/my-team", section: "player" },
+  { key: "races", label: "Curse", path: "/races", section: "player" },
   {
     key: "adminSeason",
-    label: "Season Setup",
+    label: "Setare sezon",
     path: "/admin/season",
     section: "admin",
     requiredRoles: ["admin"],
@@ -66,7 +66,7 @@ const NAV_ITEMS: NavigationItem[] = [
   },
   {
     key: "adminRaces",
-    label: "Races",
+    label: "Curse",
     path: "/admin/races",
     section: "admin",
     requiredRoles: ["admin"],
@@ -74,7 +74,7 @@ const NAV_ITEMS: NavigationItem[] = [
   },
   {
     key: "adminUsers",
-    label: "Users",
+    label: "Utilizatori",
     path: "/admin/users",
     section: "admin",
     requiredRoles: ["admin"],
@@ -82,7 +82,7 @@ const NAV_ITEMS: NavigationItem[] = [
   },
   {
     key: "adminScoring",
-    label: "Scoring",
+    label: "Scoruri",
     path: "/admin/scoring",
     section: "admin",
     requiredRoles: ["admin"],
@@ -90,7 +90,7 @@ const NAV_ITEMS: NavigationItem[] = [
   },
   {
     key: "adminNotifications",
-    label: "Notifications",
+    label: "Notificari",
     path: "/admin/notifications",
     section: "admin",
     requiredRoles: ["admin"],
@@ -99,8 +99,8 @@ const NAV_ITEMS: NavigationItem[] = [
 ];
 
 const SECTION_LABELS: Record<NavigationSectionId, string> = {
-  player: "Player",
-  admin: "Admin",
+  player: "Jucator",
+  admin: "Administrare",
 };
 
 function hasRoleAccess(item: NavigationItem, role: UserRole) {

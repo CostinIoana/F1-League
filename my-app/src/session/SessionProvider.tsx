@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { fetchSessionData } from "./api";
+import { fetchSessionData, getSeasons } from "./api";
 import { SessionContext } from "./context";
 import type { SessionData } from "./types";
 
 const SEASON_STORAGE_KEY = "f1league.selectedSeasonId";
+const SEASONS_UPDATED_EVENT = "f1league:seasons-updated";
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SessionData | null>(null);
@@ -28,6 +29,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     return () => {
       active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleSeasonsUpdated = () => {
+      setSession((current) => {
+        if (!current) {
+          return current;
+        }
+        const seasons = getSeasons();
+        const persistedSeason = localStorage.getItem(SEASON_STORAGE_KEY);
+        const fallbackSeasonId = seasons[0]?.id ?? current.selectedSeasonId;
+        const selectedSeasonId =
+          persistedSeason && seasons.some((season) => season.id === persistedSeason)
+            ? persistedSeason
+            : seasons.some((season) => season.id === current.selectedSeasonId)
+              ? current.selectedSeasonId
+              : fallbackSeasonId;
+        return { ...current, seasons, selectedSeasonId };
+      });
+    };
+
+    window.addEventListener(SEASONS_UPDATED_EVENT, handleSeasonsUpdated);
+    return () => {
+      window.removeEventListener(SEASONS_UPDATED_EVENT, handleSeasonsUpdated);
     };
   }, []);
 

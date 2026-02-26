@@ -2,17 +2,26 @@ import { useMemo, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { Surface } from "../../components/ui/Surface";
 import { useSeasons } from "../../seasons/useSeasons";
+import { useSession } from "../../session/useSession";
 
 export function AdminScoringPage() {
+  const { session } = useSession();
   const { seasons, updateSeason } = useSeasons();
   const [selectedRaceId, setSelectedRaceId] = useState("");
   const [selectedSlotId, setSelectedSlotId] = useState("");
   const [pointsDraft, setPointsDraft] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
+  const selectedSeason = useMemo(() => {
+    if (!session) {
+      return null;
+    }
+    return seasons.find((season) => season.id === session.selectedSeasonId) ?? null;
+  }, [seasons, session]);
+
   const activeSeason = useMemo(
-    () => seasons.find((season) => season.status === "active") ?? null,
-    [seasons]
+    () => (selectedSeason?.status === "active" ? selectedSeason : null),
+    [selectedSeason]
   );
 
   const selectedRace = activeSeason?.races.find((race) => race.id === selectedRaceId) ?? null;
@@ -124,7 +133,7 @@ export function AdminScoringPage() {
         <h1 className="text-xl font-bold text-[var(--color-neutral-900)]">Scoring</h1>
         <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
           <div className="text-sm text-[var(--color-neutral-700)]">
-            No active season available. Activate a season first.
+            Select an active season from the header first.
           </div>
         </Surface>
       </div>

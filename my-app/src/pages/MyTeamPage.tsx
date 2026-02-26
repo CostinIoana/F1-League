@@ -12,7 +12,6 @@ type TeamSelectionState = {
 };
 
 const TEAM_SELECTION_KEY_PREFIX = "f1league.teamSelection";
-const TOTAL_REQUIRED_PICKS = 8;
 
 function getTeamSelectionStorageKey(seasonId: string, userEmail: string) {
   return `${TEAM_SELECTION_KEY_PREFIX}.${seasonId}.${userEmail.toLowerCase()}`;
@@ -22,57 +21,13 @@ function isPilotValueGroup(value: string): value is PilotValueGroup {
   return value === "A" || value === "B" || value === "C" || value === "D" || value === "E";
 }
 
-function computeGroupRequirements(
-  groups: PilotValueGroup[],
-  availableByGroup: Record<PilotValueGroup, number>,
-  totalRequired: number
-) {
-  const requirements: Record<PilotValueGroup, number> = { A: 0, B: 0, C: 0, D: 0, E: 0 };
-  if (groups.length === 0 || totalRequired <= 0) {
-    return requirements;
-  }
-
-  let remaining = totalRequired;
-  const base = Math.floor(totalRequired / groups.length);
-  const remainder = totalRequired % groups.length;
-
-  groups.forEach((group, index) => {
-    const target = base + (index < remainder ? 1 : 0);
-    const capped = Math.min(target, availableByGroup[group]);
-    requirements[group] = capped;
-    remaining -= capped;
-  });
-
-  if (remaining > 0) {
-    let guard = 0;
-    while (remaining > 0 && guard < 200) {
-      guard += 1;
-      let allocatedAny = false;
-      for (const group of groups) {
-        if (remaining <= 0) {
-          break;
-        }
-        if (requirements[group] < availableByGroup[group]) {
-          requirements[group] += 1;
-          remaining -= 1;
-          allocatedAny = true;
-        }
-      }
-      if (!allocatedAny) {
-        break;
-      }
-    }
-  }
-
-  return requirements;
-}
-
 export function MyTeamPage() {
   const { session, loading } = useSession();
   const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([]);
   const [isLocked, setIsLocked] = useState(Boolean(false));
   const [currentGroupIndex, setCurrentGroupIndex] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
+  const [isSelectionHydrated, setIsSelectionHydrated] = useState(false);
 
   const selectedSeason = useMemo(() => {
     if (!session) {
@@ -128,20 +83,16 @@ export function MyTeamPage() {
     return base;
   }, [draftPool]);
 
-  const availableByGroup = useMemo(() => {
-    return {
-      A: draftPoolByGroup.A.length,
-      B: draftPoolByGroup.B.length,
-      C: draftPoolByGroup.C.length,
-      D: draftPoolByGroup.D.length,
-      E: draftPoolByGroup.E.length,
-    } as Record<PilotValueGroup, number>;
-  }, [draftPoolByGroup]);
-
-  const groupRequirements = useMemo(
-    () => computeGroupRequirements(activeGroups, availableByGroup, TOTAL_REQUIRED_PICKS),
-    [activeGroups, availableByGroup]
-  );
+  const groupRequirements = useMemo(() => {
+    const requirements: Record<PilotValueGroup, number> = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+    if (!selectedSeason) {
+      return requirements;
+    }
+    activeGroups.forEach((group) => {
+      requirements[group] = Math.max(0, selectedSeason.draftConfig.groupLimits[group] ?? 0);
+    });
+    return requirements;
+  }, [activeGroups, selectedSeason]);
 
   const effectiveRequiredTotal = useMemo(
     () => activeGroups.reduce((total, group) => total + groupRequirements[group], 0),
@@ -177,6 +128,37 @@ export function MyTeamPage() {
 
   useEffect(() => {
     if (!session || !selectedSeason) {
+      setSelectedSlotIds([]);
+      setIsLocked(false);
+      setIsSelectionHydrated(false);
+      return;
+    }
+
+    const storageKey = getTeamSelectionStorageKey(selectedSeason.id, session.user.email);
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) {
+      setSelectedSlotIds([]);
+      setIsLocked(false);
+      setIsSelectionHydrated(true);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as Partial<TeamSelectionState>;
+      const storedSlotIds = Array.isArray(parsed.selectedSlotIds)
+        ? parsed.selectedSlotIds.filter((slotId): slotId is string => typeof slotId === "string")
+        : [];
+      setSelectedSlotIds(storedSlotIds);
+      setIsLocked(Boolean(parsed.locked));
+    } catch {
+      setSelectedSlotIds([]);
+      setIsLocked(false);
+    }
+    setIsSelectionHydrated(true);
+  }, [session, selectedSeason]);
+
+  useEffect(() => {
+    if (!session || !selectedSeason || !isSelectionHydrated) {
       return;
     }
     const storageKey = getTeamSelectionStorageKey(selectedSeason.id, session.user.email);
@@ -186,7 +168,7 @@ export function MyTeamPage() {
       updatedAt: new Date().toISOString(),
     };
     localStorage.setItem(storageKey, JSON.stringify(payload));
-  }, [normalizedSelectedSlotIds, isLocked, session, selectedSeason]);
+  }, [normalizedSelectedSlotIds, isLocked, isSelectionHydrated, session, selectedSeason]);
 
   const togglePilotSelection = (slotId: string) => {
     if (isLocked) {

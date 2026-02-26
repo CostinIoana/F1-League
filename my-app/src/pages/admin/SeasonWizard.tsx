@@ -286,7 +286,7 @@ export function SeasonWizard({
         <div className="space-y-3">
           <div className="text-sm font-semibold text-[var(--color-neutral-900)]">Step 2: Race Calendar</div>
 
-          <div className="grid gap-2 md:grid-cols-[1fr_180px_auto]">
+          <div className="grid gap-2 md:grid-cols-[1fr_240px_auto]">
             <label className="space-y-1">
               <span className="text-xs font-semibold text-[var(--color-neutral-700)]">Race Name</span>
               <input
@@ -301,11 +301,13 @@ export function SeasonWizard({
               <span className="text-xs font-semibold text-[var(--color-neutral-700)]">Date</span>
               <input
                 type="date"
+                lang="en-GB"
                 value={raceDateDraft}
                 onChange={(event) => onRaceDateChange(event.target.value)}
                 disabled={!canEditCalendar}
-                className="w-full rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
+                className="w-full min-w-[220px] rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
               />
+              <span className="text-[11px] text-[var(--color-neutral-500)]">Format: YYYY-MM-DD</span>
             </label>
 
             {canEditCalendar && (
@@ -346,10 +348,11 @@ export function SeasonWizard({
                     <div className="flex items-center gap-2">
                       <input
                         type="date"
+                        lang="en-GB"
                         value={race.date}
                         onChange={(event) => onUpdateRaceDate(race.id, event.target.value)}
                         disabled={season.status === "active" && race.locked}
-                        className="rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
+                        className="w-[170px] rounded-lg border border-[var(--color-neutral-200)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-neutral-900)] outline-none focus:border-[var(--color-primary-500)]"
                       />
                       <Button
                         type="button"
