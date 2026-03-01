@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Surface } from "../components/ui/Surface";
@@ -74,6 +74,24 @@ type TieBreakUser = {
   picks: TieBreakPick[];
 };
 
+type SharedLeaderboardCell = string | number;
+
+type SharedLeaderboardTable = {
+  title: string;
+  description: string;
+  headers: string[];
+  rows: SharedLeaderboardCell[][];
+};
+
+type SharedLeaderboardSnapshot = {
+  seasonName: string;
+  seasonYear: number;
+  scopeName: string;
+  generatedAt: string;
+  stageTable: SharedLeaderboardTable;
+  generalTable: SharedLeaderboardTable;
+};
+
 function compareUsersByTieBreak(a: TieBreakUser, b: TieBreakUser) {
   if (b.points !== a.points) {
     return b.points - a.points;
@@ -98,11 +116,172 @@ function compareUsersByTieBreak(a: TieBreakUser, b: TieBreakUser) {
   return a.participant.localeCompare(b.participant);
 }
 
+function encodeSnapshotPayload(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+}
+
+function decodeSnapshotPayload(value: string) {
+  const binary = atob(value);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function readSharedSnapshotFromHash() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const prefix = "#shared-report=";
+  if (!window.location.hash.startsWith(prefix)) {
+    return null;
+  }
+
+  try {
+    const decoded = decodeSnapshotPayload(window.location.hash.slice(prefix.length));
+    const parsed = JSON.parse(decoded) as SharedLeaderboardSnapshot;
+    if (
+      !parsed ||
+      typeof parsed.seasonName !== "string" ||
+      typeof parsed.scopeName !== "string" ||
+      typeof parsed.generatedAt !== "string" ||
+      !Array.isArray(parsed.stageTable?.headers) ||
+      !Array.isArray(parsed.generalTable?.headers)
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function escapeHtml(value: SharedLeaderboardCell) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderPrintableTable(table: SharedLeaderboardTable) {
+  return `
+    <section class="table-card">
+      <h2>${escapeHtml(table.title)}</h2>
+      <p>${escapeHtml(table.description)}</p>
+      <table>
+        <thead>
+          <tr>${table.headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
+        </thead>
+        <tbody>
+          ${table.rows
+            .map(
+              (row) =>
+                `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </section>
+  `;
+}
+
+function buildPrintableDocument(snapshot: SharedLeaderboardSnapshot) {
+  return `<!DOCTYPE html>
+  <html lang="ro">
+    <head>
+      <meta charset="utf-8" />
+      <title>Clasamente ${escapeHtml(snapshot.seasonName)} ${escapeHtml(snapshot.seasonYear)}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 24px; color: #0f172a; }
+        h1 { margin: 0 0 8px; font-size: 24px; }
+        h2 { margin: 0 0 6px; font-size: 16px; }
+        p { margin: 0 0 12px; color: #475569; font-size: 12px; }
+        .meta { margin-bottom: 18px; font-size: 12px; color: #475569; }
+        .table-card { margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th, td { border: 1px solid #cbd5e1; padding: 4px 6px; text-align: center; }
+        th:nth-child(3), td:nth-child(3) { text-align: left; }
+        thead th { background: #f1f5f9; }
+        tbody tr:nth-child(even) { background: #f8fafc; }
+      </style>
+    </head>
+    <body>
+      <h1>Clasamente ${escapeHtml(snapshot.seasonName)} ${escapeHtml(snapshot.seasonYear)}</h1>
+      <div class="meta">Etapa selectata: ${escapeHtml(snapshot.scopeName)} | Generat la: ${escapeHtml(snapshot.generatedAt)}</div>
+      ${renderPrintableTable(snapshot.stageTable)}
+      ${renderPrintableTable(snapshot.generalTable)}
+    </body>
+  </html>`;
+}
+
+function SnapshotTable({ table }: { table: SharedLeaderboardTable }) {
+  return (
+    <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm font-semibold text-[var(--color-neutral-900)]">{table.title}</div>
+        <div className="text-xs text-[var(--color-neutral-600)]">{table.description}</div>
+      </div>
+      {table.rows.length === 0 ? (
+        <div className="mt-2 text-xs text-[var(--color-neutral-500)]">Nu exista date pentru export.</div>
+      ) : (
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full border-collapse text-[11px] leading-tight">
+            <thead>
+              <tr className="bg-[var(--color-neutral-100)] text-[var(--color-neutral-900)]">
+                {table.headers.map((header, index) => (
+                  <th
+                    key={`${table.title}-${header}-${index}`}
+                    className={`whitespace-nowrap border border-[var(--color-neutral-200)] px-1.5 py-0.5 ${
+                      index === 2 ? "text-left" : "text-center"
+                    }`}
+                  >
+                    {header}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {table.rows.map((row, rowIndex) => (
+                <tr
+                  key={`${table.title}-row-${rowIndex}`}
+                  className={rowIndex % 2 === 0 ? "bg-[var(--color-surface)]" : "bg-[var(--color-neutral-100)]"}
+                >
+                  {row.map((cell, cellIndex) => (
+                    <td
+                      key={`${table.title}-row-${rowIndex}-cell-${cellIndex}`}
+                      className={`whitespace-nowrap border border-[var(--color-neutral-200)] px-1.5 py-0.5 ${
+                        cellIndex === 2 ? "text-left" : "text-center"
+                      }`}
+                    >
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Surface>
+  );
+}
+
 export function LeaderboardsPage() {
   const { session, loading } = useSession();
   const { seasons } = useSeasons();
-  const [activeTab, setActiveTab] = useState<LeaderboardTab>("users");
-  const [scoreScope, setScoreScope] = useState<string>(SEASON_TOTAL_SCOPE);
+  const initialSearchParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const sharedSnapshot = useMemo(readSharedSnapshotFromHash, []);
+  const [activeTab, setActiveTab] = useState<LeaderboardTab>(() => {
+    const tab = initialSearchParams.get("tab");
+    return tab === "pilots" || tab === "teams" || tab === "users" ? tab : "users";
+  });
+  const [scoreScope, setScoreScope] = useState<string>(() => initialSearchParams.get("scope") ?? SEASON_TOTAL_SCOPE);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
 
   const selectedSeason = useMemo(() => {
@@ -274,16 +453,6 @@ export function LeaderboardsPage() {
       );
   }, [pilotBySlotId, pilotPositionBySlotForScope, pointsBySlot, selectedSeason]);
 
-  const userStandings = useMemo(
-    () =>
-      userStandingsDetailed.map((user) => ({
-        email: user.email,
-        points: user.points,
-        locked: user.locked,
-      })),
-    [userStandingsDetailed]
-  );
-
   const userPickColumnCount = useMemo(() => {
     if (!selectedSeason) {
       return 0;
@@ -352,29 +521,153 @@ export function LeaderboardsPage() {
     scoreScope === SEASON_TOTAL_SCOPE
       ? "General (curse punctate)"
       : selectedSeason?.races.find((race) => race.id === scoreScope)?.name ?? "Race";
-
-  const shareText = useMemo(() => {
-    const headline = `F1 League Leaderboard - ${selectedSeason?.name ?? ""} ${selectedSeason?.year ?? ""} (${selectedRaceName})`;
-    const lines =
-      activeTab === "users"
-        ? userStandings.slice(0, 5).map((user, index) => `${index + 1}. ${user.email} - ${user.points} pts`)
-        : activeTab === "pilots"
-          ? pilotStandings.slice(0, 5).map((pilot, index) => `${index + 1}. ${pilot.pilotName} - ${pilot.points} pts`)
-          : teamStandings.slice(0, 5).map((team, index) => `${index + 1}. ${team.teamName} - ${team.points} pts`);
-    return [headline, ...lines].join("\n");
-  }, [selectedSeason, selectedRaceName, activeTab, userStandings, pilotStandings, teamStandings]);
-
-  const handleShare = async () => {
-    try {
-      await navigator.clipboard.writeText(shareText);
-      setShareMessage("Leaderboard copied to clipboard.");
-    } catch {
-      setShareMessage("Could not copy leaderboard.");
+  const liveSnapshot = useMemo(() => {
+    if (!selectedSeason) {
+      return null;
     }
+
+    const stageHeaders = [
+      "Clasament",
+      "Puncte",
+      "Participanti",
+      ...Array.from({ length: userPickColumnCount }).flatMap((_, index) => [`Pilot ${index + 1}`, "Pct"]),
+    ];
+    const stageRows = userStandingsDetailed.map((user, rowIndex) => [
+      rowIndex + 1,
+      user.points,
+      `${user.participant}${user.locked ? " (L)" : ""}`,
+      ...Array.from({ length: userPickColumnCount }).flatMap((_, index) => [
+        user.picks[index]?.pilotCode ?? "-",
+        user.picks[index]?.points ?? 0,
+      ]),
+    ]);
+
+    const generalHeaders = [
+      "Clasament",
+      "Puncte",
+      "Participanti",
+      ...Array.from({ length: userMatrixPilotCount }).flatMap((_, index) => [`Pilot ${index + 1}`, "Pct"]),
+    ];
+    const generalRows = userPointsMatrix.map((row) => [
+      row.rank,
+      row.totalPoints,
+      row.participant,
+      ...Array.from({ length: userMatrixPilotCount }).flatMap((_, index) => [
+        row.picks[index]?.pilotCode ?? "-",
+        row.picks[index]?.points ?? 0,
+      ]),
+    ]);
+
+    return {
+      seasonName: selectedSeason.name,
+      seasonYear: selectedSeason.year,
+      scopeName: selectedRaceName,
+      generatedAt: new Date().toLocaleString("ro-RO"),
+      stageTable: {
+        title: `Clasament pe etapa - ${selectedRaceName}`,
+        description: "Clasamentul utilizatorilor pentru etapa selectata.",
+        headers: stageHeaders,
+        rows: stageRows,
+      },
+      generalTable: {
+        title: "Clasament general actualizat",
+        description: "Matricea generala cu punctele acumulate dupa toate cursele punctate.",
+        headers: generalHeaders,
+        rows: generalRows,
+      },
+    } satisfies SharedLeaderboardSnapshot;
+  }, [selectedRaceName, selectedSeason, userPickColumnCount, userPointsMatrix, userMatrixPilotCount, userStandingsDetailed]);
+
+  const exportSnapshot = sharedSnapshot ?? liveSnapshot;
+
+  useEffect(() => {
+    if (sharedSnapshot) {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    params.set("scope", scoreScope);
+    params.set("tab", activeTab);
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`;
+    window.history.replaceState(null, "", nextUrl);
+  }, [activeTab, scoreScope, sharedSnapshot]);
+
+  const handleCopyShareLink = async () => {
+    if (!exportSnapshot) {
+      setShareMessage("Nu exista date pentru link.");
+      return;
+    }
+
+    const shareUrl = `${window.location.origin}${window.location.pathname}#shared-report=${encodeSnapshotPayload(
+      JSON.stringify(exportSnapshot)
+    )}`;
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareMessage("Linkul cu rezultatele a fost copiat.");
+    } catch {
+      setShareMessage("Linkul nu a putut fi copiat.");
+    }
+  };
+
+  const handleExportPdf = () => {
+    if (!exportSnapshot) {
+      setShareMessage("Nu exista date pentru export.");
+      return;
+    }
+
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1200,height=900");
+    if (!printWindow) {
+      setShareMessage("Popup blocat. Permite popup pentru export PDF.");
+      return;
+    }
+
+    printWindow.document.write(buildPrintableDocument(exportSnapshot));
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.onload = () => {
+      printWindow.print();
+    };
+    setShareMessage("Raportul este pregatit pentru Save as PDF.");
   };
 
   if (loading || !session) {
     return <div className="p-6 text-sm text-[var(--color-neutral-700)]">Loading leaderboards...</div>;
+  }
+
+  if (sharedSnapshot) {
+    return (
+      <div className="space-y-3 p-2">
+        <Surface>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-bold">Clasamente distribuite</h1>
+                <Badge tone="secondary">{sharedSnapshot.scopeName}</Badge>
+              </div>
+              <div className="text-sm text-[var(--color-neutral-700)]">
+                {sharedSnapshot.seasonName} {sharedSnapshot.seasonYear}
+              </div>
+              <div className="text-xs text-[var(--color-neutral-600)]">
+                Generat la {sharedSnapshot.generatedAt}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" tone="neutral" size="sm" onClick={handleCopyShareLink}>
+                Copiaza link
+              </Button>
+              <Button variant="outline" tone="neutral" size="sm" onClick={handleExportPdf}>
+                Export PDF
+              </Button>
+            </div>
+          </div>
+          {shareMessage && <div className="mt-2 text-xs text-[var(--color-neutral-600)]">{shareMessage}</div>}
+        </Surface>
+
+        <SnapshotTable table={sharedSnapshot.stageTable} />
+        <SnapshotTable table={sharedSnapshot.generalTable} />
+      </div>
+    );
   }
 
   if (!selectedSeason) {
@@ -386,7 +679,7 @@ export function LeaderboardsPage() {
   }
 
   return (
-    <div className="space-y-3 p-2">
+    <div className="-mx-2 space-y-3 px-2 xl:-mx-10 xl:px-10 2xl:-mx-12 2xl:px-12">
       <Surface>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -394,9 +687,14 @@ export function LeaderboardsPage() {
             <Badge tone="primary">Live</Badge>
             <Badge tone="secondary">{selectedRaceName}</Badge>
           </div>
-          <Button variant="outline" tone="neutral" size="sm" onClick={handleShare}>
-            Share
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" tone="neutral" size="sm" onClick={handleCopyShareLink}>
+              Copiaza link
+            </Button>
+            <Button variant="outline" tone="neutral" size="sm" onClick={handleExportPdf}>
+              Export PDF
+            </Button>
+          </div>
         </div>
         {shareMessage && <div className="mt-2 text-xs text-[var(--color-neutral-600)]">{shareMessage}</div>}
       </Surface>
@@ -414,18 +712,18 @@ export function LeaderboardsPage() {
           <div className="mt-2 text-xs text-[var(--color-neutral-500)]">No user standings available.</div>
         ) : (
           <div className="mt-2 overflow-x-auto">
-            <table className="min-w-full border-collapse text-xs">
+            <table className="w-full border-collapse text-[11px] leading-tight">
               <thead>
                 <tr className="bg-[var(--color-neutral-100)] text-[var(--color-neutral-900)]">
-                  <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-left">Clasament</th>
-                  <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-right">Puncte</th>
-                  <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-left">Participant</th>
+                  <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-1.5 py-0.5 text-center">Clasament</th>
+                  <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-1.5 py-0.5 text-center">Puncte</th>
+                  <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-1.5 py-0.5 text-left">Participanti</th>
                   {Array.from({ length: userMatrixPilotCount }).map((_, index) => (
                     <Fragment key={`matrix-header-${index + 1}`}>
-                      <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-left">
+                      <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-1.5 py-0.5 text-center">
                         Pilot {index + 1}
                       </th>
-                      <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-right">P</th>
+                      <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-1.5 py-0.5 text-center">Pct</th>
                     </Fragment>
                   ))}
                 </tr>
@@ -436,19 +734,19 @@ export function LeaderboardsPage() {
                     key={row.participant}
                     className={rowIndex % 2 === 0 ? "bg-[var(--color-surface)]" : "bg-[var(--color-neutral-100)]"}
                   >
-                    <td className="border border-[var(--color-neutral-200)] px-2 py-1 font-semibold text-[var(--color-neutral-800)]">{row.rank}</td>
-                    <td className="border border-[var(--color-neutral-200)] px-2 py-1 text-right font-semibold text-[var(--color-neutral-900)]">
+                    <td className="border border-[var(--color-neutral-200)] px-1.5 py-0.5 text-center font-semibold text-[var(--color-neutral-800)]">{row.rank}</td>
+                    <td className="border border-[var(--color-neutral-200)] px-1.5 py-0.5 text-center font-semibold text-[var(--color-neutral-900)]">
                       {row.totalPoints}
                     </td>
-                    <td className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-[var(--color-neutral-900)]">
+                    <td className="whitespace-nowrap border border-[var(--color-neutral-200)] px-1.5 py-0.5 text-[var(--color-neutral-900)]">
                       {row.participant}
                     </td>
                     {Array.from({ length: userMatrixPilotCount }).map((_, index) => (
                       <Fragment key={`matrix-row-${row.participant}-${index}`}>
-                        <td className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-[var(--color-neutral-800)]">
+                        <td className="whitespace-nowrap border border-[var(--color-neutral-200)] px-1.5 py-0.5 text-center text-[var(--color-neutral-800)]">
                           {row.picks[index]?.pilotCode ?? "-"}
                         </td>
-                        <td className="border border-[var(--color-neutral-200)] px-2 py-1 text-right text-[var(--color-neutral-800)]">
+                        <td className="border border-[var(--color-neutral-200)] px-1.5 py-0.5 text-center text-[var(--color-neutral-800)]">
                           {row.picks[index]?.points ?? 0}
                         </td>
                       </Fragment>
@@ -461,20 +759,20 @@ export function LeaderboardsPage() {
         )}
       </Surface>
 
-      <div className="grid gap-3 xl:grid-cols-[320px_1fr]">
+      <div className="grid gap-3 xl:grid-cols-[210px_minmax(0,1fr)]">
         <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
           <div className="text-sm font-semibold text-[var(--color-neutral-900)]">Score Scope</div>
           <div className="mt-2 space-y-2">
             <button
               type="button"
               onClick={() => setScoreScope(SEASON_TOTAL_SCOPE)}
-              className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left ${
+              className={`flex w-full items-center justify-between rounded-lg border px-2 py-1.5 text-left ${
                 scoreScope === SEASON_TOTAL_SCOPE
                   ? "border-[var(--color-primary-500)] bg-[var(--color-neutral-100)]"
                   : "border-[var(--color-neutral-200)] bg-[var(--color-surface)]"
               }`}
             >
-              <span className="text-sm text-[var(--color-neutral-800)]">General (curse punctate)</span>
+              <span className="text-[13px] text-[var(--color-neutral-800)]">General (curse punctate)</span>
               <Badge tone="neutral">ALL</Badge>
             </button>
             {selectedSeason.races.map((race, index) => (
@@ -482,13 +780,13 @@ export function LeaderboardsPage() {
                 key={race.id}
                 type="button"
                 onClick={() => setScoreScope(race.id)}
-                className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left ${
+                className={`flex w-full items-center justify-between rounded-lg border px-2 py-1.5 text-left ${
                   scoreScope === race.id
                     ? "border-[var(--color-primary-500)] bg-[var(--color-neutral-100)]"
                     : "border-[var(--color-neutral-200)] bg-[var(--color-surface)]"
                 }`}
               >
-                <span className="text-sm text-[var(--color-neutral-800)]">
+                <span className="text-[13px] text-[var(--color-neutral-800)]">
                   {index + 1}. {race.name}
                 </span>
                 <Badge tone="secondary">{getRaceShortCode(race.name)}</Badge>
@@ -536,19 +834,30 @@ export function LeaderboardsPage() {
                 <div className="text-xs text-[var(--color-neutral-600)]">No user selections available.</div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="min-w-full border-collapse text-xs">
+                  <table className="w-full table-fixed border-collapse text-[10px] leading-tight">
+                    <colgroup>
+                      <col className="w-11" />
+                      <col className="w-12" />
+                      <col className="w-24" />
+                      {Array.from({ length: userPickColumnCount }).map((_, index) => (
+                        <Fragment key={`pair-col-${index + 1}`}>
+                          <col className="w-9" />
+                          <col className="w-8" />
+                        </Fragment>
+                      ))}
+                    </colgroup>
                     <thead>
                       <tr className="bg-[var(--color-neutral-100)] text-[var(--color-neutral-900)]">
-                        <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-left">Clasament</th>
-                        <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-right">Puncte</th>
-                        <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-left">Participant</th>
+                        <th className="border border-[var(--color-neutral-200)] px-1 py-0.5 text-center">Clas.</th>
+                        <th className="border border-[var(--color-neutral-200)] px-1 py-0.5 text-center">Pct</th>
+                        <th className="border border-[var(--color-neutral-200)] px-1 py-0.5 text-left">Participanti</th>
                         {Array.from({ length: userPickColumnCount }).map((_, index) => (
                           <Fragment key={`pair-header-${index + 1}`}>
-                            <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-left">
-                              Pilot {index + 1}
+                            <th className="border border-[var(--color-neutral-200)] px-1 py-0.5 text-center">
+                              P{index + 1}
                             </th>
-                            <th className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-right">
-                              P
+                            <th className="border border-[var(--color-neutral-200)] px-1 py-0.5 text-center">
+                              Pct
                             </th>
                           </Fragment>
                         ))}
@@ -560,22 +869,22 @@ export function LeaderboardsPage() {
                           key={user.email}
                           className={rowIndex % 2 === 0 ? "bg-[var(--color-surface)]" : "bg-[var(--color-neutral-100)]"}
                         >
-                          <td className="border border-[var(--color-neutral-200)] px-2 py-1 font-semibold text-[var(--color-neutral-900)]">
+                          <td className="border border-[var(--color-neutral-200)] px-1 py-0.5 text-center font-semibold text-[var(--color-neutral-900)]">
                             {rowIndex + 1}
                           </td>
-                          <td className="border border-[var(--color-neutral-200)] px-2 py-1 text-right font-semibold text-[var(--color-neutral-900)]">
+                          <td className="border border-[var(--color-neutral-200)] px-1 py-0.5 text-center font-semibold text-[var(--color-neutral-900)]">
                             {user.points}
                           </td>
-                          <td className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-[var(--color-neutral-900)]">
+                          <td className="break-words border border-[var(--color-neutral-200)] px-1 py-0.5 text-[var(--color-neutral-900)]">
                             {user.participant}
                             {user.locked ? " (L)" : ""}
                           </td>
                           {Array.from({ length: userPickColumnCount }).map((_, index) => (
                             <Fragment key={`pair-row-${user.email}-${index}`}>
-                              <td className="whitespace-nowrap border border-[var(--color-neutral-200)] px-2 py-1 text-[var(--color-neutral-800)]">
+                              <td className="border border-[var(--color-neutral-200)] px-1 py-0.5 text-center text-[var(--color-neutral-800)]">
                                 {user.picks[index]?.pilotCode ?? "-"}
                               </td>
-                              <td className="border border-[var(--color-neutral-200)] px-2 py-1 text-right text-[var(--color-neutral-800)]">
+                              <td className="border border-[var(--color-neutral-200)] px-1 py-0.5 text-center text-[var(--color-neutral-800)]">
                                 {user.picks[index]?.points ?? 0}
                               </td>
                             </Fragment>

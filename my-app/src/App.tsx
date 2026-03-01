@@ -69,8 +69,9 @@ function AppRoutes() {
         }
       >
         <Route index element={<Navigate to={defaultPath} replace />} />
+        <Route path="leaderboards" element={<LeaderboardsPage />} />
 
-        {visibleNavigationItems.map((item) => (
+        {visibleNavigationItems.filter((item) => item.key !== "leaderboards").map((item) => (
           <Route key={item.key} path={item.path.slice(1)} element={routeElementByKey[item.key]} />
         ))}
 
