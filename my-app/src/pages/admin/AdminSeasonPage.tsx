@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { Badge } from "../../components/ui/Badge";
@@ -16,6 +16,18 @@ import { NewDraftSeasonForm, type NewDraftSeasonInput } from "./NewDraftSeasonFo
 import { SeasonWizard, type SeasonInfoDraft, type SeasonInfoErrors } from "./SeasonWizard";
 
 type SeasonSetupSubmenu = "newDraft" | "completedSeasons";
+type LocalBackupEntry = {
+  key: string;
+  value: string;
+};
+
+type LocalBackupFile = {
+  app: "f1league";
+  version: 1;
+  source: "localStorage";
+  exportedAt: string;
+  entries: LocalBackupEntry[];
+};
 
 const statusLabelMap: Record<SeasonStatus, string> = {
   draft: "Draft",
@@ -30,6 +42,70 @@ const statusToneMap: Record<SeasonStatus, "neutral" | "primary" | "secondary"> =
 };
 
 const MAX_GROUP_LIMIT = 99;
+const LOCAL_STORAGE_KEY_PREFIX = "f1league.";
+const SEASONS_UPDATED_EVENT = "f1league:seasons-updated";
+
+function createLocalBackupPayload(): LocalBackupFile {
+  const entries: LocalBackupEntry[] = [];
+
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (!key || !key.startsWith(LOCAL_STORAGE_KEY_PREFIX)) {
+      continue;
+    }
+
+    const value = localStorage.getItem(key);
+    if (value === null) {
+      continue;
+    }
+
+    entries.push({ key, value });
+  }
+
+  entries.sort((a, b) => a.key.localeCompare(b.key));
+
+  return {
+    app: "f1league",
+    version: 1,
+    source: "localStorage",
+    exportedAt: new Date().toISOString(),
+    entries,
+  };
+}
+
+function isLocalBackupFile(value: unknown): value is LocalBackupFile {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as Partial<LocalBackupFile>;
+  return (
+    candidate.app === "f1league" &&
+    candidate.version === 1 &&
+    candidate.source === "localStorage" &&
+    typeof candidate.exportedAt === "string" &&
+    Array.isArray(candidate.entries) &&
+    candidate.entries.every(
+      (entry) =>
+        typeof entry === "object" &&
+        entry !== null &&
+        typeof (entry as Partial<LocalBackupEntry>).key === "string" &&
+        typeof (entry as Partial<LocalBackupEntry>).value === "string"
+    )
+  );
+}
+
+function downloadJsonFile(filename: string, content: string) {
+  const blob = new Blob([content], { type: "application/json" });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(objectUrl);
+}
 
 function slugify(value: string) {
   return value
@@ -97,6 +173,7 @@ function createSlotId(name: string, existingIds: Set<string>) {
 export function AdminSeasonPage() {
   const { seasons, getSeasonById, createDraftSeason, updateSeason, deleteSeason } = useSeasons();
   const [searchParams] = useSearchParams();
+  const backupInputRef = useRef<HTMLInputElement | null>(null);
   const seasonSetupSubmenu: SeasonSetupSubmenu =
     searchParams.get("view") === "completedSeasons" ? "completedSeasons" : "newDraft";
   const [wizardSeasonId, setWizardSeasonId] = useState<string | null>(null);
@@ -134,6 +211,7 @@ export function AdminSeasonPage() {
   const [exceptionReplacementName, setExceptionReplacementName] = useState("");
   const [exceptionMessage, setExceptionMessage] = useState<string | null>(null);
   const [seasonActionMessage, setSeasonActionMessage] = useState<string | null>(null);
+  const [backupMessage, setBackupMessage] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ seasonId: string; step: 1 | 2 } | null>(null);
 
   const currencyFormatter = useMemo(
@@ -1477,6 +1555,55 @@ export function AdminSeasonPage() {
     setWizardStep((current) => Math.min(6, current + 1));
   };
 
+  const handleExportLocalBackup = () => {
+    const payload = createLocalBackupPayload();
+    const filename = `f1league-local-backup-${payload.exportedAt.replace(/[:.]/g, "-")}.json`;
+    downloadJsonFile(filename, JSON.stringify(payload, null, 2));
+    setBackupMessage(`Exported ${payload.entries.length} local storage entries.`);
+  };
+
+  const handleImportLocalBackup = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.target;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(await file.text()) as unknown;
+      if (!isLocalBackupFile(parsed)) {
+        setBackupMessage("Invalid backup file.");
+        return;
+      }
+
+      const existingKeys: string[] = [];
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (key && key.startsWith(LOCAL_STORAGE_KEY_PREFIX)) {
+          existingKeys.push(key);
+        }
+      }
+
+      existingKeys.forEach((key) => {
+        localStorage.removeItem(key);
+      });
+
+      parsed.entries.forEach((entry) => {
+        localStorage.setItem(entry.key, entry.value);
+      });
+
+      setBackupMessage(`Imported ${parsed.entries.length} local storage entries. Reloading...`);
+      window.dispatchEvent(new Event(SEASONS_UPDATED_EVENT));
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 300);
+    } catch {
+      setBackupMessage("Could not import backup file.");
+    } finally {
+      input.value = "";
+    }
+  };
+
   return (
     <div className="space-y-4 p-2">
       <header className="space-y-1">
@@ -1488,6 +1615,37 @@ export function AdminSeasonPage() {
           <div className="text-xs text-[var(--color-neutral-600)]">{seasonActionMessage}</div>
         )}
       </header>
+
+      <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-[var(--color-neutral-900)]">Local Backup</div>
+            <div className="text-xs text-[var(--color-neutral-600)]">
+              Export or restore all `f1league.*` data stored in this browser.
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={handleExportLocalBackup}>
+              Export JSON
+            </Button>
+            <input
+              ref={backupInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={handleImportLocalBackup}
+            />
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => backupInputRef.current?.click()}
+            >
+              Import JSON
+            </Button>
+          </div>
+        </div>
+        {backupMessage && <div className="mt-2 text-xs text-[var(--color-neutral-600)]">{backupMessage}</div>}
+      </Surface>
 
       {pendingDelete && (
         <Surface tone="subtle" className="border-[var(--color-neutral-300)]">
